@@ -1,0 +1,377 @@
+---
+title: "Single-cell RNA seq  trajctories and pseudotime plots"
+author: "Stefan Filges"
+date: '`r format(Sys.Date())`'
+output: 
+  html_document:
+    theme: sandstone
+    highlight: tango
+    code_folding: hide
+    toc: true
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_libraries}
+# Packages for main analysis, clustering, data structures etc.
+suppressMessages(library(Seurat, quietly = TRUE))
+suppressMessages(library(mclust, quietly = TRUE))
+suppressMessages(library(biomaRt, quietly = TRUE))
+suppressMessages(library(msigdbr, quietly = TRUE))
+suppressMessages(library(clusterProfiler, quietly = TRUE))
+suppressMessages(library(destiny, quietly = TRUE))
+suppressMessages(library(SummarizedExperiment, quietly = TRUE))
+suppressMessages(require(clusterExperiment, quietly = TRUE))
+suppressMessages(library(MAST, quietly = TRUE))
+suppressMessages(library(DESeq2, quietly = TRUE))
+suppressMessages(library(sctransform, quietly = TRUE))
+
+# Packages for data handeling and plotting
+suppressMessages(library(reshape, quietly = TRUE))
+suppressMessages(library(cowplot, quietly = TRUE))
+suppressMessages(library(tidyverse, quietly = TRUE))
+suppressMessages(library(viridis, quietly = TRUE))
+suppressMessages(library(RColorBrewer, quietly = TRUE))
+suppressMessages(library(VennDiagram, quietly = TRUE))
+suppressMessages(library(DT, quietly = TRUE))
+
+# Packages for pseudotime ordering
+suppressMessages(library(slingshot, quietly = TRUE))
+suppressMessages(library(monocle, quietly = TRUE))
+suppressMessages(library(SCORPIUS, quietly = TRUE))
+```
+
+# What does this document do?
+
+This document uses pre-generated single cell data objects containing pseudotime/trajctory information and generates plots for data exploration and analysis. The data sets were generated using a different script, which can take a significant amount of time and is a long document containing code on many other issues. This document allows for faster and easier-to-use analysis.
+
+## Load data
+
+First we load a CellDataSet called cds generated with Monocle v2. This contains the expression data, cell metdata (phenotypes) as well as pseudotime values.
+
+```{r import_data}
+# load object
+seurat_object_save <- "~/GitHub/SingleCellScripts/data/Rdata/seurat_object_final.Rdata"
+load(seurat_object_save)
+
+# Filenames for exporting data
+# cell data object containing pseudotime
+cds_data <- '~/GitHub/SingleCellScripts/data/Rdata/cds_monocle2.Rdata'
+
+# differentially expressed genes
+gene_expression <- '~/GitHub/SingleCellScripts/data/gene_lists/monocle2_DEG_genes.csv'
+
+# genes used for ordering
+ordering_genes <- "~/GitHub/SingleCellScripts/data/gene_lists/ordering_genes.csv"
+```
+
+# Trajectory inference/Pseudotime ordering
+
+There are many methods available for pseudotime ordering/trajectory inference. 
+[Saelens et al.](https://www.nature.com/articles/s41587-019-0071-9.pdf) 
+reviewed 45 different algorithms. They find that no algorithm works for all data
+sets and the best algorithm to use depends on the actual topology of the data.
+Therefore they recommend to test different algorithms which make slightly
+different assumptions and compare the results. If a result is robust across
+multiple tools it is most likely to be correct. The algorithms chosen below
+have scored high for accuracy and stability, can detect most topologies and
+have the highest likelihood of obtaining a top model. They also use different 
+methods for trajectory inference (graph, tree or linear) and most require no
+prior knowledge about start or end points of the trajectory.
+
+We chose three methods implemented in R:
+
+- [slingshot](https://bioconductor.org/packages/release/bioc/vignettes/slingshot/inst/doc/vignette.html#using-slingshot), 
+- [Monocle DDRTree](http://cole-trapnell-lab.github.io/monocle-release/) and
+- [SCORPIUS](https://cran.r-project.org/web/packages/SCORPIUS/index.html)
+- Additionally we implement the [PAGA algorithm](https://genomebiology.biomedcentral.com/track/pdf/10.1186/s13059-019-1663-x) written in Python.
+
+PAGA and RaceID are graph-based, whereas slingshot and monocle use tree-based algorithms.
+All four have free topology inference, i.e. they don't make prior assumptions
+about the underlying topology and can infer multiple types of trajectory. SCORPIUS
+has a fixed linear topology, i.e. the graph will always be a single line without
+branches. PAGA requires to set a cell population as the starting point of
+the trajectory, either a cluster or a sample. The others require no priors.
+
+Implementations of all algorithms from the Saelens review can be found
+as docker containers with an API implemented in the [dynverse](https://dynverse.org/users/1-installation/) package.
+
+A note on usage: PAGA, Scorpius and slingshot run very fast (seconds), wheras monocle
+DDRTree and RaceID requires >30 min, for a dataset with 4000 cells and 10k features. Runtimes
+may scale differently for each algorithm.
+
+## Cell trajectory using slingshot
+
+```{r slingshot, eval=TRUE, echo=TRUE}
+
+scaffolds.sce <- Seurat::as.SingleCellExperiment(merged_data)
+
+colData(scaffolds.sce)$leiden <- as.character(
+  merged_data@meta.data$seurat_clusters
+)
+colData(scaffolds.sce)$sample <- as.character(
+  merged_data@meta.data$group
+)
+
+sce <- slingshot(
+  data = scaffolds.sce,
+  reducedDim = 'UMAP',
+  clusterLabels = 'sample'
+)
+
+col = brewer.pal(9,'Set1')[sce$sample]
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(sce$slingPseudotime_1, breaks=100)]
+
+plot(reducedDims(sce)$UMAP, col = plotcol, pch=16, asp = 1, frame.plot=TRUE)
+lines(SlingshotDataSet(sce), lwd = 3, col = 'black')
+```
+
+## SCORPIUS
+
+```{r scorpius, eval=TRUE}
+expression <- t(as.data.frame(merged_data@assays$RNA@data))
+groups <- data.frame(merged_data@meta.data$group)
+rownames(groups) <- rownames(merged_data@meta.data)
+
+space <- reduce_dimensionality(
+  x = expression,
+  dist = 'pearson',
+  ndim = 3
+)
+
+trajectory <- infer_trajectory(space)
+
+
+draw_trajectory_plot(
+  space = space, 
+  progression_group = groups$merged_data,
+  contour = TRUE,
+  path = trajectory$path
+)
+```
+
+## Pseudotime with Monocole 2 DDRTree
+
+Monocle performs differential expression and time-series analysis for single-cell 
+expression experiments. It orders individual cells according to progress through 
+a biological process, without knowing ahead of time which genes define progress 
+through that process. Monocle also performs differential expression analysis, 
+clustering, visualization, and other useful tasks on single cell expression data. 
+It is designed to work with RNA-Seq and qPCR data, but could be used with other 
+types as well.
+
+```{r monocle2-DDTree, eval=TRUE, message=FALSE}
+data <- as(as.matrix(merged_data@assays$RNA@data),'sparseMatrix')
+pd <- new('AnnotatedDataFrame', data=merged_data@meta.data)
+
+fData  <- data.frame(
+  gene_short_name = row.names(data),
+  row.names = row.names(data)
+)
+
+fd <- new('AnnotatedDataFrame', data = fData)
+
+scedata <- monocle::newCellDataSet(
+  cellData = data,
+  phenoData = pd,
+  featureData = fd,
+  lowerDetectionLimit = 0.5,
+  expressionFamily = VGAM::negbinomial.size()
+)
+
+scedata <- estimateSizeFactors(scedata)
+scedata <- estimateDispersions(scedata)
+
+scedata<- monocle::detectGenes(scedata, min_expr = 0.1)
+
+fData(scedata)$use_for_ordering <- 
+  fData(scedata)$num_cells_expressed > 0.05*ncol(scedata)
+
+
+scedata <- monocle::reduceDimension(
+  scedata,
+  max_components = 2,
+  norm_method = 'log',
+  num_dim = 10,
+  reduction_method = 'tSNE',
+  verbose = TRUE
+)
+
+# Clustering based on density peaks
+scedata <- monocle::clusterCells(
+  scedata,
+  verbose = FALSE
+)
+
+# Visualize clisters
+monocle::plot_cell_clusters(
+  scedata,
+  color_by = 'as.factor(Cluster)'
+)
+
+# Plot the decision plot for users to  decide the threshold for defining the cell clusters.
+monocle::plot_rho_delta(
+  scedata,
+  rho_threshold = 1,
+  delta_threshold = 5
+)
+
+# Recluster based on manually chosen parameters for Delta and Rho
+scedata <- monocle::clusterCells(
+  scedata,
+  rho_threshold = 1,
+  delta_threshold = 5,
+  skip_rho_sigma = TRUE,
+  verbose = FALSE
+)
+
+monocle::plot_cell_clusters(
+  scedata, 
+  color_by = 'group'
+)
+
+monocle::plot_cell_clusters(
+  scedata,
+  color_by = 'as.factor(Cluster)'
+)
+
+clustering_DEG_genes <- monocle::differentialGeneTest(
+  scedata,
+  fullModelFormulaStr = '~Cluster',
+  cores = 2
+)
+
+# select the top 1000 significant genes as the ordering genes
+scedata_ordering_genes <- row.names(clustering_DEG_genes)[order(clustering_DEG_genes$qval)][1:1000]
+
+cds <- monocle::setOrderingFilter(
+  scedata,
+  ordering_genes = scedata_ordering_genes
+)
+
+cds <- monocle::reduceDimension(
+  cds,
+  method = 'DDRTree'
+)
+
+cds <- monocle::orderCells(cds)
+
+
+# Export files
+save(cds,file = cds_data)
+write_csv2(clustering_DEG_genes, gene_expression)
+write_csv2(data.frame(gene=scedata_ordering_genes), ordering_genes)
+
+#cds <- monocle::orderCells(cds, root_state = GM_state(scedata))
+```
+
+## RaceID
+
+```{r, raceID, eval=FALSE}
+# Create the sc object
+ndata <- merged_data@assays$RNA@counts
+
+sc <- RaceID::SCseq(ndata)
+
+# Filter for this
+sc <- RaceID::filterdata(
+  object = sc,
+  mintotal = 2000
+)
+
+# Regress variables from cell object
+vars <- data.frame(
+  nCount_RNA = merged_data$nCount_RNA,
+  S.score = merged_data$S.Score,
+  G2M.score = merged_data$G2M.Score
+)
+sc <- RaceID::varRegression(sc,vars)
+
+# Re-initialize raceID
+part <- as.numeric(merged_data@meta.data$seurat_clusters)
+d <- as.matrix(dist(merged_data@reductions$pca@cell.embeddings))
+umap <- as.data.frame(merged_data@reductions$umap@cell.embeddings)
+names(part) <- colnames(d)
+
+n <- colnames(sc@ndata)
+part <- part[n]
+
+# partition
+sc@cpart <- sc@cluster$kpart <- part
+# distances
+sc@distances <- d[n,n]
+# umap
+sc@umap <- umap[n,]
+# expression data (optional)
+sc@counts <- sc@counts * 0 + 1
+sc@ndata  <- ndata[,n]
+# cluster medoids
+sc@medoids <- RaceID::compmedoids(sc, sc@cpart)
+
+col_cluster <- colorRampPalette(
+  brewer.pal(12,"Set3"))(
+    length(
+      unique(
+        merged_data@meta.data$seurat_clusters)
+      )
+    )
+
+names(col_cluster) <- as.character(unique(merged_data@meta.data$seurat_clusters))
+
+set.seed(12345)
+sc@fcol <- col_cluster[order(as.numeric(names(col_cluster)))]
+
+# Run StemID
+# Initialise lineage tree object
+ltr <- RaceID::Ltree(sc)
+# Compute transcriptome entropy
+ltr <- RaceID::compentropy(ltr)
+# Project cells unto cluster links
+ltr <- RaceID::projcells(
+  object = ltr,
+  cthr=5,     # use clusters with at least this many cells
+  nmode=TRUE, # use knn
+  um=TRUE,    # use UMAP projection for visualisation
+  knn=3
+)
+
+ltr <- RaceID::lineagegraph(object = ltr)
+
+ltr <- RaceID::comppvalue(ltr, pthr=0.1)
+
+RaceID::plotgraph(ltr,showCells=FALSE,showMap=TRUE)
+
+x <- RaceID::compscore(ltr)
+
+# Plot stemID score for each cluster
+stem_data <- tibble(
+  cluster = names(x$StemIDscore), 
+  score = x$StemIDscore
+  ) %>%
+  dplyr::arrange(score)
+
+stem_data$cluster <- as.factor(str_remove(stem_data$cluster, "cl.")) 
+stem_data$color <- fct_relevel(stem_data$cluster, c("10", "11", "12", "13"), 
+  after = Inf)
+
+stem_score <- ggplot(
+  data = stem_data,
+  mapping = aes(x = reorder(cluster, score), y=score, fill = color)
+  ) + 
+  geom_bar(
+    stat = "identity",
+    colour="black",
+    width = .8,
+    size = .01
+    ) + 
+  theme_bw()
+
+stem_score
+```
+
+

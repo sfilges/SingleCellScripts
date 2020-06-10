@@ -1,0 +1,483 @@
+---
+title: "(5) Trajctories and pseudotime plots"
+author: "Stefan Filges"
+date: '`r format(Sys.Date())`'
+output: 
+  html_document:
+    theme: sandstone
+    highlight: tango
+    code_folding: show
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_libraries}
+# Packages for main analysis, clustering, data structures etc.
+suppressMessages(library(Seurat, quietly = TRUE))
+suppressMessages(library(mclust, quietly = TRUE))
+suppressMessages(library(biomaRt, quietly = TRUE))
+suppressMessages(library(msigdbr, quietly = TRUE))
+suppressMessages(library(clusterProfiler, quietly = TRUE))
+suppressMessages(library(destiny, quietly = TRUE))
+suppressMessages(library(SummarizedExperiment, quietly = TRUE))
+suppressMessages(require(clusterExperiment, quietly = TRUE))
+suppressMessages(library(MAST, quietly = TRUE))
+suppressMessages(library(DESeq2, quietly = TRUE))
+suppressMessages(library(sctransform, quietly = TRUE))
+
+# Packages for data handeling and plotting
+suppressMessages(library(reshape, quietly = TRUE))
+suppressMessages(library(cowplot, quietly = TRUE))
+suppressMessages(library(tidyverse, quietly = TRUE))
+suppressMessages(library(viridis, quietly = TRUE))
+suppressMessages(library(RColorBrewer, quietly = TRUE))
+suppressMessages(library(VennDiagram, quietly = TRUE))
+suppressMessages(library(DT, quietly = TRUE))
+
+# Packages for pseudotime ordering
+suppressMessages(library(slingshot, quietly = TRUE))
+suppressMessages(library(monocle, quietly = TRUE))
+suppressMessages(library(SCORPIUS, quietly = TRUE))
+```
+
+# What does this document do?
+
+This document uses pre-generated single cell data objects containing pseudotime/trajctory information and generates plots for data exploration and analysis. The data sets were generated using a different script, which can take a significant amount of time and is a long document containing code on many other issues. This document allows for faster and easier-to-use analysis.
+
+# Monocle 2
+
+## Load data
+
+First we load a CellDataSet called cds generated with Monocle v2. This contains the expression data, cell metdata (phenotypes) as well as pseudotime values.
+
+```{r import_data}
+# load object
+seurat_object_save <- "~/GitHub/SingleCellScripts/data/Rdata/seurat_object_final.Rdata"
+load(seurat_object_save)
+load(file = '~/GitHub/SingleCellScripts/data/Rdata/cds_monocle2.Rdata')
+load(file = '~/GitHub/SingleCellScripts/data/Rdata/seurat_object.Rdata')
+
+clustering_DEG_genes = read.csv2(file = '~/GitHub/SingleCellScripts/data/gene_lists/monocle2_DEG_genes.csv')
+order_genes <- read.csv2(file = '~/GitHub/SingleCellScripts/data/gene_lists/ordering_genes.csv')
+```
+
+## Cell trajectories
+
+```{r monocle_v2_pseudotime, echo=FALSE}
+plot1 <- monocle::plot_cell_trajectory(
+  cds = cds,
+  color_by = "Pseudotime"
+) + scale_color_viridis_c()
+
+plot2 <- monocle::plot_cell_trajectory(
+  cds = cds, 
+  color_by = "group"
+) + scale_color_manual(
+  values = c('#ff8668', 'gray70', '#5e8aab', '#ffce8e')
+  )
+
+#+ scale_color_brewer(palette = "Dark2")
+#+ scale_color_manual("#ff8668","gray70","#5e8aab","#ffce8e")
+
+plot1 + plot2
+```
+
+## Expression heatmap
+
+We want to find genes differentially expressed across pseudotime. Instead of
+testing all genes, we will limit the number of genes to be tested: (i) First
+we select only genes differentially expressed in cluster with an adjusted
+p value $<0.01$ and (ii) select the top 500 of those to perform the test. 
+
+After testing we select again based on adjusted p value $<0.01$ to find the 
+most significantly expressed genes along the trajectory. These are then visualised
+in a heatmap with 
+
+```{r monocle2-heatmap, eval=TRUE, message=FALSE}
+clustering_genes <- clustering_DEG_genes %>% 
+  dplyr::filter(use_for_ordering == TRUE) %>%
+  dplyr::arrange(qval)
+
+to_be_tested <- clustering_genes$gene_short_name[1:1500]
+#to_be_tested <- order_genes$gene
+
+cds_subset <- cds[as.character(to_be_tested),]
+
+diff_test_res <- monocle::differentialGeneTest(
+  cds_subset,
+  fullModelFormulaStr = "~sm.ns(Pseudotime)"
+)
+
+sig_gene_names <- row.names(subset(diff_test_res, qval < 0.01))
+
+heatmap <- monocle::plot_pseudotime_heatmap(
+  cds_subset[sig_gene_names,],
+  num_clusters = 4,
+  cores = 4,
+  cluster_rows = TRUE,
+  norm_method = 'vstExprs',
+  show_rownames = FALSE,
+  hmcols = viridis::magma(256),
+  return_heatmap = TRUE
+)
+
+pdf(file = '~/GitHub/SingleCellScripts/figures/heatmap_4_clusters.pdf', width = 7,height = 3)
+heatmap
+dev.off()
+
+# Retrieve gene names + cluster identities
+clusters <- cutree(heatmap$tree_row, k = 4)
+t <- tibble(
+  gene = names(clusters), 
+  cluster = clusters
+  ) %>%
+  arrange(cluster)
+
+readr::write_csv2(t, path = '~/GitHub/SingleCellScripts/data/gene_lists/diff_genes_over_pseudotime_top_1500_q_0.01.csv')
+```
+
+```{r}
+cds_time <- cds_subset[,order(cds_subset$Pseudotime)]
+
+# red: scf FD - #F8766D
+# grÃ¼n: scf WT - #7CAE00
+# cyan: xen FD - #00BFC4
+# violett: xen WT - #C77CFF
+
+ggplotColours <- function(n = 6, h = c(0, 360) + 15){
+  if ((diff(h) %% 360) < 1) h[2] <- h[2] - 360/n
+  hcl(h = (seq(h[1], h[2], length = n)), c = 100, l = 65)
+}
+
+annotation = list(
+  time = cds_time$Pseudotime,
+  group = cds_time$group
+)
+annotation_colors = list(
+  time = viridis::viridis(256),
+  group =  c("#ff8668", "gray70","#5e8aab","#ffce8e")
+)
+
+NMF::aheatmap(
+  x = as.matrix(exprs(cds_time[1:10,])),
+  Colv = NA, 
+  Rowv = NA, 
+  border_color = NA,
+  annCol = annotation,
+  annColors = annotation_colors,
+  scale = 'none',
+  width = 5,
+  height = 5,
+  filename = "~/GitHub/SingleCellScripts/figures/aheatmap_500_genes.pdf"
+)
+```
+
+## Plot differentially expressed genes in pseudotime
+
+```{r}
+diff_test_res <- diff_test_res %>% 
+  dplyr::filter(qval < 0.01) %>%
+  dplyr::arrange(qval)
+
+my_genes <- c('CDKN2C', 'LAMA4', 'GAPDH', 'APOE', 'ALDOA')
+cds_subset <- cds[my_genes,]
+
+#markers_to_plot <- t %>% dplyr::group_by(cluster) %>% summarise(first = first(gene)) 
+#cds_subset <- cds[markers_to_plot$first,]
+
+# Plot by pseudotime
+plot1 <- monocle::plot_genes_in_pseudotime(
+  cds_subset = cds_subset,
+  color_by = "Pseudotime",
+  relative_expr = TRUE,
+  cell_size = 0.5
+) + scale_color_viridis_c() +
+  theme(legend.position = 'bottom')
+
+# Plot by sample
+plot2 <- monocle::plot_genes_in_pseudotime(
+  cds_subset = cds_subset,
+  relative_expr = TRUE,
+  color_by = "group",
+  cell_size = 0.5
+  ) + scale_color_manual(values = c("#ff8668", "gray70","#5e8aab","#ffce8e"))+
+  theme(legend.position = 'bottom')
+
+#+ scale_color_brewer(palette = "Dark2")
+#+ scale_color_manual(values = c("#ff8668", "gray70","#5e8aab","#ffce8e"))
+
+plot1 + plot2
+```
+
+
+```{r}
+custom_dotplot <- function(
+  egmt,
+  showCategory = 20,
+  x.axis = 'GeneRatio',
+  font.size = 7
+  ){
+  data <- egmt@result %>%
+    dplyr::arrange(qvalue) %>%
+    dplyr::select(-geneID) %>%
+    tidyr::separate(GeneRatio, c("top", "bottom"), sep = "/") %>%
+    dplyr::mutate(GeneRatio = as.numeric(top)/as.numeric(bottom))
+  data <- head(data, showCategory)
+  data$category <- factor(data$ID, levels = rev(data$ID))
+  if(x.axis == 'GeneRatio') {
+    dp <- ggplot(
+      data = data,
+      mapping = aes(x = GeneRatio, y = category, color = -log10(qvalue))
+    ) +
+      geom_point(aes(size = Count)) +
+      scale_color_continuous(
+        low="red", high="blue",
+        name = '-log10(qvalue)',
+        guide=guide_colorbar(reverse=FALSE)
+        ) +
+      theme_minimal() +
+      theme(
+        axis.line = element_line(color="black", size = 0.2),
+        axis.title.y = element_blank(),
+        axis.text.y = element_text(size = font.size)
+        ) + guides(size = guide_legend(reverse = TRUE))
+  } else if (x.axis == 'qvalue'){
+    dp <- ggplot(
+      data = data,
+      mapping = aes(x = -log10(qvalue), y = category, color = GeneRatio)
+    ) +
+      geom_point(aes(size = Count)) +
+      scale_color_continuous(
+        low="red", high="blue",
+        name = 'GeneRatio',
+        guide=guide_colorbar(reverse=FALSE)
+        ) +
+      theme_minimal() +
+      theme(
+        axis.line = element_line(color="black", size = 0.2),
+        axis.title.y = element_blank(),
+        axis.text.y = element_text(size = font.size)
+        ) + guides(size = guide_legend(reverse = TRUE))
+  }
+  return(dp)
+}
+
+enricher_custom <- function(
+  gene,
+  pvalueCutoff,
+  pAdjustMethod = "BH",
+  universe = NULL,
+  minGSSize = 10,
+  maxGSSize = 500,
+  qvalueCutoff = 0.2,
+  USER_DATA) {
+  
+    gene <- as.character(unique(gene))
+    qExtID2TermID <- EXTID2TERMID(gene, USER_DATA)
+    qTermID <- unlist(qExtID2TermID)
+    
+    if (is.null(qTermID)) {
+      message("--> No gene can be mapped....")
+      p2e <- get("PATHID2EXTID", envir = USER_DATA)
+      sg <- unlist(p2e[1:10])
+      sg <- sample(sg, min(length(sg), 6))
+      message("--> Expected input gene ID: ", paste0(sg, collapse = ","))
+      message("--> return NULL...")
+      return(NULL)
+    }
+    qExtID2TermID.df <- data.frame(
+      extID = rep(names(qExtID2TermID),
+                  times = lapply(qExtID2TermID, length)),
+      termID = qTermID
+    )
+    
+    qExtID2TermID.df <- unique(qExtID2TermID.df)
+    qTermID2ExtID <- with(
+      qExtID2TermID.df, split(as.character(extID),as.character(termID))
+    )
+    
+    extID <- ALLEXTID(USER_DATA)
+    
+    if (missing(universe)) 
+      universe <- NULL
+    if (!is.null(universe)) {
+      extID <- as.character(universe)
+    }
+    
+    qTermID2ExtID <- lapply(qTermID2ExtID, intersect, extID)
+    qTermID <- unique(names(qTermID2ExtID))
+    termID2ExtID <- TERMID2EXTID(qTermID, USER_DATA)
+    termID2ExtID <- lapply(termID2ExtID, intersect, extID)
+    geneSets <- termID2ExtID
+    idx <- get_geneSet_index(termID2ExtID, minGSSize, maxGSSize)
+    
+    if (sum(idx) == 0) {
+      msg <- paste("No gene set have size >", minGSSize, "...")
+      message(msg)
+      message("--> return NULL...")
+      return(NULL)
+    }
+    
+    termID2ExtID <- termID2ExtID[idx]
+    qTermID2ExtID <- qTermID2ExtID[idx]
+    qTermID <- unique(names(qTermID2ExtID))
+    
+    k <- sapply(qTermID2ExtID, length)
+    k <- k[qTermID]
+    M <- sapply(termID2ExtID, length)
+    M <- M[qTermID]
+    N <- rep(length(extID), length(M))
+    n <- rep(length(qExtID2TermID), length(M))
+    args.df <- data.frame(
+      numWdrawn = k - 1, 
+      numW = M, 
+      numB = N - M, 
+      numDrawn = n
+    )
+    
+    pvalues <- apply(
+      args.df, 1, function(n) phyper(n[1], n[2], n[3], n[4], lower.tail = FALSE)
+    )
+    
+    GeneRatio <- apply(
+      data.frame(a = k, b = n), 1, function(x) paste(x[1], "/", x[2], sep = "", collapse = "")
+    )
+    
+    BgRatio <- apply(
+      data.frame(a = M, b = N), 1, function(x) paste(x[1], "/", x[2], sep = "", collapse = "")
+    )
+    
+    Over <- data.frame(
+      ID = as.character(qTermID), 
+      GeneRatio = GeneRatio, 
+      BgRatio = BgRatio, 
+      pvalue = pvalues,
+      stringsAsFactors = FALSE
+    )
+    
+    p.adj <- p.adjust(Over$pvalue, method = pAdjustMethod)
+    
+    qobj <- tryCatch(qvalue(p = Over$pvalue, 
+                            lambda = 0.05,
+                            pi0.method = "bootstrap"),
+                     error = function(e) NULL)
+    
+    if (class(qobj) == "qvalue") {
+      qvalues <- qobj$qvalues
+    }
+    else {
+      qvalues <- NA
+    }
+    
+    geneID <- sapply(qTermID2ExtID, function(i) paste(i, collapse = "/"))
+    geneID <- geneID[qTermID]
+    
+    Over <- data.frame(
+      Over,
+      p.adjust = p.adj,
+      qvalue = qvalues,
+      geneID = geneID, 
+      Count = k, 
+      stringsAsFactors = FALSE
+    )
+    
+    Description <- TERM2NAME(qTermID, USER_DATA)
+    
+    if (length(qTermID) != length(Description)) {
+      idx <- qTermID %in% names(Description)
+      Over <- Over[idx, ]
+    }
+    
+    Over$Description <- Description
+    nc <- ncol(Over)
+    Over <- Over[, c(1, nc, 2:(nc - 1))]
+    Over <- Over[order(pvalues), ]
+    Over$ID <- as.character(Over$ID)
+    Over$Description <- as.character(Over$Description)
+    row.names(Over) <- as.character(Over$ID)
+    
+    x <- new("enrichResult", result = Over, pvalueCutoff = pvalueCutoff, 
+             pAdjustMethod = pAdjustMethod, qvalueCutoff = qvalueCutoff, 
+             gene = as.character(gene), universe = extID, geneSets = geneSets, 
+             organism = "UNKNOWN", keytype = "UNKNOWN", ontology = "UNKNOWN", 
+             readable = FALSE)
+    
+    return(x)
+}
+
+enricher_edit<-function(gene, pvalueCutoff = 0.05, pAdjustMethod = "BH", universe, 
+                         minGSSize = 10, maxGSSize = 500, qvalueCutoff = 0.2, TERM2GENE, 
+                         TERM2NAME = NA) 
+{
+  USER_DATA <- build_Anno(TERM2GENE, TERM2NAME)
+  enricher_custom(gene = gene, pvalueCutoff = pvalueCutoff, 
+                  pAdjustMethod = pAdjustMethod, universe = universe, minGSSize = minGSSize, 
+                  maxGSSize = maxGSSize, qvalueCutoff = qvalueCutoff, USER_DATA = USER_DATA)
+}
+
+body(enricher)<-body(enricher_edit)
+
+environment(enricher_custom)<-environment(clusterProfiler:::enricher_internal)
+
+enrichment_plot <- function(data, cluster){
+  gene <- data %>% dplyr::filter(cluster == cluster)
+  
+  kegg <- read.gmt("~/GitHub/SingleCellScripts/data/MSigDB/c2.cp.kegg.v7.1.symbols.gmt")
+  cgp <- read.gmt("~/GitHub/SingleCellScripts/data/MSigDB/c2.cgp.v7.1.symbols.gmt")
+  
+  hgnc_symbols <- read.csv("~/GitHub/SingleCellScripts/data/MSigDB/hgnc.txt", sep = '\t', header=TRUE)
+  hgnc_symbols <- hgnc_symbols$Approved.symbol
+
+  egmt <- enricher(
+    gene$gene,
+    TERM2GENE=cgp,
+    pvalueCutoff = 0.1,
+    pAdjustMethod = 'fdr',
+    minGSSize = NA,
+    maxGSSize = NA,
+    qvalueCutoff = 0.05,
+    universe = hgnc_symbols
+  )
+  cgp_dotplot <- custom_dotplot(egmt, x.axis = "qvalue")
+  
+  egmt <- enricher(
+    gene$gene,
+    TERM2GENE=kegg,
+    pvalueCutoff = 0.1,
+    pAdjustMethod = 'fdr',
+    minGSSize = NA,
+    maxGSSize = NA,
+    qvalueCutoff = 0.05,
+    universe = hgnc_symbols
+  )
+  kegg_dotplot <- custom_dotplot(egmt, x.axis = "qvalue")
+  
+  plot <- cgp_dotplot + kegg_dotplot
+  return(plot)
+}
+
+
+pdf(file = paste("enrichment_cluster_1",".pdf", sep=""),width = 12,height = 6)
+enrichment_plot(data = t, cluster = 1)
+dev.off()
+  
+pdf(file = paste("enrichment_cluster_2",".pdf", sep=""),width = 12,height = 6)
+enrichment_plot(2)
+dev.off()
+  
+pdf(file = paste("enrichment_cluster_3",".pdf", sep=""),width = 12,height = 6)
+enrichment_plot(3)
+dev.off()
+  
+pdf(file = paste("enrichment_cluster_4",".pdf", sep=""),width = 12,height = 6)
+enrichment_plot(4)
+dev.off()
+```
+
+
+

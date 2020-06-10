@@ -1,0 +1,2280 @@
+---
+title: "Single-cell RNA seq pipeline for 10x Genomic data"
+author: "Stefan Filges"
+date: '`r format(Sys.Date())`'
+output: 
+  html_document:
+    theme: sandstone
+    highlight: tango
+    code_folding: hide
+    toc: true
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Seurat pipeline
+
+Single-cell RNA-seq methods develop rapidly and no standardized workflow exists.
+This analysis is best on current best practices as outlined by [Luecken and Theis](https://www.embopress.org/doi/10.15252/msb.20188746) (June 2019). Major analysis platforms
+are Seurat and Scater (written in R) and scanpy (written in Python). A web-based
+course and overview of scRNA-seq methods, including Seurat, is maintained by
+[the Hemberg lab](https://scrnaseq-course.cog.sanger.ac.uk/website/index.html).
+
+We use the Seurat package maintained by the [Satija lab](https://satijalab.org/seurat/) and available through [CRAN](https://cran.r-project.org/web/packages/Seurat/index.html). The version used here is
+Seurat 3.0 (Released April 16, 2019). See their guided tutorials and the review
+above for detailed explanations. Packages and algorithms used are linked to
+published articles or repositories for further information.
+
+First we load packages required for the main analysis, plotting and for later
+pseudotime ordering using multiple different algorithms.
+
+```{r packages, message=FALSE, warning=FALSE}
+# run sctransform, this replaces the NormalizeData, ScaleData and FindVariableFeatures
+sctransform = FALSE
+
+# Should cell cycle filtering be applied or not?
+filter_cell_cycle = FALSE
+
+# Define output file names
+seurat_object_save <- "./Data/seurat_object.Rdata"
+cds_data <- './Data/cds_monocle2.Rdata'
+gene_expression <- './Data/monocle2_DEG_genes.csv'
+
+# Packages for main analysis, clustering, data structures etc.
+suppressMessages(library(Seurat, quietly = TRUE))
+suppressMessages(library(mclust, quietly = TRUE))
+suppressMessages(library(biomaRt, quietly = TRUE))
+suppressMessages(library(msigdbr, quietly = TRUE))
+suppressMessages(library(clusterProfiler, quietly = TRUE))
+suppressMessages(library(destiny, quietly = TRUE))
+suppressMessages(library(SummarizedExperiment, quietly = TRUE))
+suppressMessages(require(clusterExperiment, quietly = TRUE))
+suppressMessages(library(MAST, quietly = TRUE))
+suppressMessages(library(DESeq2, quietly = TRUE))
+suppressMessages(library(sctransform, quietly = TRUE))
+
+# Packages for data handeling and plotting
+suppressMessages(library(reshape, quietly = TRUE))
+suppressMessages(library(cowplot, quietly = TRUE))
+suppressMessages(library(tidyverse, quietly = TRUE))
+suppressMessages(library(viridis, quietly = TRUE))
+suppressMessages(library(RColorBrewer, quietly = TRUE))
+suppressMessages(library(VennDiagram, quietly = TRUE))
+suppressMessages(library(DT, quietly = TRUE))
+
+# Packages for pseudotime ordering
+suppressMessages(library(slingshot, quietly = TRUE))
+suppressMessages(library(monocle, quietly = TRUE))
+suppressMessages(library(SCORPIUS, quietly = TRUE))
+```
+
+## Set up the Seurat objects
+
+The first step is creating Seurat object for each sample to be analyzed. Here we read in data generated using the 10x Chromium platform (v2 chemistry). Raw sequencing files were processed using the [Cellranger pipeline](https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/what-is-cell-ranger) from 10x Genomics, which generates aligment files using [STAR](https://dx.doi.org/10.1093%2Fbioinformatics%2Fbts635) and barcode matrices. The Cellranger output is then loaded into a Seurat object using the Read10X function. Cellranger
+was run on a CentOS 6 cluster at Gothenburg University.
+
+Alternative workflows for generating count matrices are [kallisto/bustools](https://www.kallistobus.tools/). Kallisto uses pseudoalignment which
+requires far less time and computational resources than explicit genome alignment,
+which is usually not important for transcript counting. Bustools is a suite for
+generating BUS files (Barcode, UMI, Set) which are intermediate binary storage
+files for UMI based sequencing data and typically smaller than bam files.
+Bus files can be imported into R using the 
+[BUSpaRse package](https://github.com/BUStools/BUSpaRse). Details can be found
+in a recent [publication](https://academic.oup.com/bioinformatics/article/35/21/4472/5487510).
+
+We will apply some early filtering here by requiring min.cells = 5. min.cells only includes features detected in at least this many cells. Will subset the counts matrix as well. To reintroduce excluded features, create a new object with a lower cutoff.
+
+```{r loadObjects, message=FALSE, warning=FALSE}
+#working_directory <- "~/Data Files/10x_single_cell_data_for manuscript"
+#setwd(working_directory)
+
+#---------------- 2d cultures -------------------
+# Analyze HT1080 EWS-FLI 2D cultured cells
+ews_2d <- Read10X(data.dir = "HT1080_2D_EF/outs/filtered_feature_bc_matrix/")
+ews_2d <- CreateSeuratObject(ews_2d, project = "2d_EWS", min.cells = 5)
+ews_2d$group <- "2D-EWS"
+
+# Analyze HT1080 FUS-DDIT3 2D cultured cells
+fd_2d <- Read10X(data.dir = "HT1080_2D_FD/outs/filtered_feature_bc_matrix/")
+fd_2d <- CreateSeuratObject(fd_2d,project = "2d_FD", min.cells = 5)
+fd_2d$group <- "2D-FD"
+
+# Analyze plasmid controls controls
+wt_2d <- Read10X(data.dir = "HT1080_2D_WT/outs/filtered_feature_bc_matrix/")
+wt_2d <- CreateSeuratObject(wt_2d,project = "2d_WT", min.cells = 5)
+wt_2d$group <- "2D-WT"
+
+#---------------- scaffold cultures -------------------
+# Analyze FUS-DDIT3 samples
+fd_scf <- Read10X("HT1080_Scf_FD/outs/filtered_gene_bc_matrices/custom_egfp_hg38/")
+fd_scf <- CreateSeuratObject(fd_scf,project = "scf_FD", min.cells = 5)
+fd_scf$group <- "scf-FD"
+
+# Analyze EGFP control samples
+egfp_scf <- Read10X("HT1080_Scf_EGFP/outs/filtered_gene_bc_matrices/custom_egfp_hg38/")
+egfp_scf <- CreateSeuratObject(egfp_scf,project = "scf_eGFP", min.cells = 5)
+egfp_scf$group <- "scf-EGFP"
+
+# Analyze WT samples
+wt_scf <- Read10X("HT1080_Scf_WT/outs/filtered_gene_bc_matrices/custom_egfp_hg38/")
+wt_scf <- CreateSeuratObject(wt_scf,project = "scf_WT", min.cells = 5)
+wt_scf$group <- "scf-WT"
+
+#---------------- xenograft cultures -------------------
+# Analyze WT samples
+wt_xen <- Read10X("HT1080_Xen_WT/outs/filtered_gene_bc_matrices/custom_egfp_hg38/")
+wt_xen <- CreateSeuratObject(wt_xen,project = "xen_WT", min.cells = 5)
+wt_xen$group <- "xenograft-WT"
+
+# Analyze FUS-DDIT3 samples
+fd_xen <- Read10X("HT1080_Xen_FD/HT1080_FD_mouse_custom_hg38/filtered_gene_bc_matrices/custom_egfp_hg38/")
+fd_xen <- CreateSeuratObject(fd_xen,project = "xen_FD", min.cells = 5)
+fd_xen$group <- "xenograft-FD"
+```
+
+## Standard pre-processing workflow
+
+The steps below encompass the standard pre-processing workflow for scRNA-seq data 
+in Seurat. These represent the selection and filtration of cells based on QC metrics, 
+data normalization and scaling, and the detection of highly variable features.
+
+### Merge all data object into a common experiment
+
+First Seurat object for individual samples are merged to faciliate their
+combined analysis. For each sample we print out the number of cells.
+
+```{r merge, fig.width=8, fig.height=8, message=FALSE, warning=FALSE}
+# Merged dataset
+merged_data <- merge(
+  x = wt_scf,
+  y = c(wt_xen, fd_scf, fd_xen),
+  add.cell.ids = c('wt-scf', 'wt-xen', 'fd-scf', 'fd-xen'),
+  project = 'scaffold'
+)
+
+unique(x = sapply(X = strsplit(x = colnames(
+  x = merged_data), split = '_'), FUN = '[', 1))
+
+table(merged_data$orig.ident)
+```
+
+### Quality control {.tabset}
+
+Mitochondrial gene expression can be a confounding factor and very high
+mtDNA expression might indicate dead cells which should be removed from further
+analysis.
+
+We plot nFeature_RNA (= number of genes per cell), nCount_RNA (= number of 
+transcripts per cell) and percentage of mtDNA expression and filter cells
+accordingly. When performing QC variables should be considered jointly.
+For instance high mtDNa expression may also reflect cells with high 
+respiratory activity rather than lysed cells.
+
+```{r preproc, echo = FALSE}
+# store mitochondrial percentage in object meta data
+merged_data[["percent.mt"]] <- PercentageFeatureSet(
+  object = merged_data, 
+  pattern = "^MT-"
+)
+
+plot1 <- FeatureScatter(
+  object = merged_data,
+  feature1 = "nCount_RNA",
+  feature2 = "percent.mt",
+  group.by = "group"
+) + theme(
+  legend.position = "bottom",
+  legend.title = element_blank()
+)
+
+plot2 <- FeatureScatter(
+  object = merged_data,
+  feature1 = "nCount_RNA",
+  feature2 = "nFeature_RNA",
+  group.by = "group"
+) + theme(
+  legend.position = "bottom",
+  legend.title = element_blank()
+)
+```
+
+#### Violin
+
+```{r, echo=FALSE}
+VlnPlot(
+  object = merged_data, 
+  features = c('nFeature_RNA', 'nCount_RNA', 'percent.mt'), 
+  ncol = 3, 
+  group.by = 'group',
+  log = TRUE
+)
+```
+
+#### Scatter
+
+```{r, echo =FALSE}
+plot1 + plot2
+```
+
+### Filter dead cells and doublets {.tabset}
+
+From the scatter plot of transcripts counts vs. mtDNA we can see that cells
+with very high mtDNA content > 20\% also have very low transcript numbers and
+are therefore probably lysed cells and should be removed.
+
+```{r , message=FALSE}
+# Filter data to remove dead cells, outliers
+merged_data <- subset(
+  x = merged_data,
+  subset = nFeature_RNA > 2000 & nFeature_RNA < 8000 & percent.mt < 10
+)
+
+# Plot percent mito DNA and mRNA count after filtering
+plot1 <- Seurat::FeatureScatter(
+  object = merged_data,
+  feature1 = "nCount_RNA",
+  feature2 = "percent.mt",
+  group.by = "group"
+) + theme(
+  legend.position = "bottom",
+  legend.title = element_blank()
+)
+
+plot2 <- Seurat::FeatureScatter(
+  object = merged_data,
+  feature1 = "nCount_RNA",
+  feature2 = "nFeature_RNA",
+  group.by = "group"
+) + theme(
+  legend.position = "bottom",
+  legend.title = element_blank()
+)
+```
+
+#### Scatter
+```{r , echo=FALSE}
+plot1 + plot2
+```
+
+#### Violin
+
+```{r }
+# Visualize QC metrics as a violin plot
+VlnPlot(
+  object = merged_data, 
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+  ncol = 3, 
+  group.by = "group"
+)
+```
+
+### Normalizing the data using regularized negative binomial regression {.tabset}
+
+We normalise the data either using [sctransform](https://www.biorxiv.org/content/10.1101/576827v1)
+or using the standard Seurat workflow depending on the setting of the 
+sctransform variable.
+
+sctransform models the expression of each gene as a negative binomial random variable with a mean that depends on other variables. Here the other variables can be used to model the differences in sequencing depth between cells and are used as independent variables in a regression model. In order to avoid overfitting, we will first fit model parameters per gene, and then use the relationship between gene mean and parameter values to fit parameters, thereby combining information across genes. Given the fitted model parameters, we transform each observed UMI count into a Pearson residual which can be interpreted as the number of standard deviations an observed count was away from the expected mean. If the model accurately describes the mean-variance relationship and the dependency of mean and latent factors, then the result should have mean zero and a stable variance across the range of expression. During normalization, we can also remove confounding sources of variation, for example, mitochondrial mapping percentage.
+
+We can also assign each cell a cell cycle score based on known cell-cycle
+associated genes for S and G2/M phases. These are available through the Seurat
+package.
+
+```{r cc_scoring, message=FALSE, warning=FALSE}
+# A list of cell cycle markers, from Tirosh et al, 2015, is loaded with Seurat.  We can
+# segregate this list into markers of G2/M phase and markers of S phase
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+# Assign cell cycle score to genes, which will be stored in the Seurat object
+# metdata
+merged_data <- Seurat::CellCycleScoring(
+  object = merged_data,
+  s.features = s.genes,
+  g2m.features = g2m.genes,
+  set.ident = TRUE
+)
+
+VlnPlot(
+  object = merged_data, 
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+  ncol = 3, 
+  group.by = "Phase"
+)
+
+VlnPlot(
+  object = merged_data, 
+  features = c('S.Score', 'G2M.Score'), 
+  ncol = 3, 
+  group.by = "group"
+)
+```
+
+We perform the normalization workflow and only regress out the variable 'percent.mt'.
+We perform PCA on the scaled data with and withoutcell cycle regressed genes, however in both cases we regress out the mtDNAexpression. For this PCA we only use the annotated cell cycle genes! It is expected that cells cluster according to cell cycle stage without regression and that
+regressed data shows much less separation according to cell cycle stage (but
+not necessarily zero).
+
+To filter cell cycle genes too set the filter_cell_cycle variable to TRUE.
+
+```{r normalizeData, message=FALSE, warning=FALSE}
+# Regress out mitochondrial expression and cell cycle stage
+vars.to.regress = c('percent.mt', 'S.Score', 'G2M.Score')
+
+# Decide which normalization workflow to use
+if(sctransform){
+  merged_data <- SCTransform(
+    object = merged_data, 
+    vars.to.regress = vars.to.regress,
+    verbose = FALSE
+  )
+} else {
+  merged_data <- Seurat::NormalizeData(
+    object = merged_data,
+    verbose = FALSE
+  )
+  
+  merged_data <- Seurat::FindVariableFeatures(
+    object = merged_data, 
+    selection.method = 'vst', 
+    nfeatures = 2000
+  )
+  
+  # Scale data without regressing out cell cycle
+  merged_data_cc <- Seurat::ScaleData(
+    object = merged_data,
+    vars.to.regress = 'percent.mt'
+  )
+  
+  # Regress out cell cycle
+  merged_data_no_cc <- Seurat::ScaleData(
+    object = merged_data,
+    vars.to.regress = vars.to.regress
+  )
+  
+  # Decide to use data with/without cell cycle regression
+  if(filter_cell_cycle){
+    merged_data <- merged_data_no_cc
+  } else {
+    merged_data <- merged_data_cc
+  }
+  
+  # Perform PCA on cc regressed samples
+  merged_data_cc <- Seurat::RunPCA(
+    object = merged_data_cc,
+    features = c(s.genes, g2m.genes)
+  )
+  
+  before_cc_correction <- Seurat::DimPlot(merged_data_cc)
+  
+  merged_data_no_cc <- Seurat::RunPCA(
+    object = merged_data_no_cc,
+    features = c(s.genes, g2m.genes)
+  )
+  
+  after_cc_correction <- Seurat::DimPlot(merged_data_no_cc)
+}
+```
+
+#### With cell cycle
+```{r, echo=FALSE, message=FALSE}
+before_cc_correction
+```
+
+#### Cell cycle regressed
+```{r, echo=FALSE, message=FALSE}
+after_cc_correction
+```
+
+## Identification of highly variable features (feature selection)
+
+Even after removing features found in only a few cells and removing artefacts
+the data set may be very large with > 15,000 features. Thus, only genes highly 
+variable across the data set are used for downstream analysis. According to
+Luecken and Theis typical cut-offs are between 1000 and 5000 genes. Although
+downstream analysis is robust as to the the number of genes chosen, they recommend
+to use larger values. We used 2000 genes, the default in the Seurat package.
+
+```{r diff_exp, fig.width=8, fig.height=8, message=FALSE}
+# Identify the 10 most highly variable genes
+top30 <- head(x = VariableFeatures(object = merged_data), 30)
+
+# plot variable features with and without labels
+plot1 <- Seurat::VariableFeaturePlot(object = merged_data)
+Seurat::LabelPoints(plot = plot1, points = top30, repel = TRUE)
+```
+
+## Dimensionality reduction & clustering
+
+Despite containing many cells and features scRNA-seq data is inherently low-dimensional,
+i.e. most biological variation in scRNA-seq data can be shown in few dimensions.
+
+Dimensionality reduction techniques generated reduced dimensions through
+linear or non-linear combination of gene expression vectors. Non-linear methods
+like [tSNE](http://www.jmlr.org/papers/v9/vandermaaten08a.html) and
+[UMAP](https://www.nature.com/articles/nbt.4314) result in better cell 
+visualisations because they capture local similaity in high-dimensional data 
+better than linear methods such as PCA. However, non-linear reduced dimensions 
+are not straight-forward to interpret, wheras principal components and their 
+associated gene loadings can be interpreted easily.
+
+Dimensionality reduction techniques should be interpreted separatly: PCA or 
+diffusion maps for general purpose summarization and trajectory inference, 
+UMAP for exploratory visualization and UMAP with PAGA for complex data sets.
+
+### Principal component analysis {.tabset}
+
+We first apply PCA to the merged data set and print the top five features (loadings) for
+each of the first five principal components, both in positive and negative direction.
+
+We visualise the PCA and colours cells by sample ID. The elbow plot showws the
+PCs ranked by variance contribution, allowing us to determine a reduced dimensionality
+for downstream processing. Typically we want to choose the number of PC around
+a "hinge" in elbow plot. Alternatively a statistical procedure called Jackstraw,
+implemented in Seurat, can be used to determine the significance of PCs using
+resampling. 
+
+We also plot the top positive and negative loadings for the first six dimensions
+in a heatmap.
+
+```{r dimReduction1, message=FALSE} 
+merged_data <- Seurat::RunPCA(
+  object = merged_data,
+  verbose = FALSE
+)
+
+elbow_plot <- ElbowPlot(
+  object = merged_data
+)
+
+print(x = merged_data[['pca']], dims = 1:5, nfeatures = 5)
+
+merged_data <- Seurat::JackStraw(
+  object = merged_data,
+  num.replicate = 100
+)
+
+merged_data <- Seurat::ScoreJackStraw(
+  object = merged_data,
+  dims = 1:15
+)
+
+jackstraw_plot <- Seurat::JackStrawPlot(
+  object = merged_data,
+  dims = 1:15
+)
+
+pca_dim_plot <- Seurat::DimPlot(
+  object = merged_data,
+  reduction = 'pca', 
+  group.by = 'group'
+)
+
+pca_dim_loadings <- Seurat::VizDimLoadings(
+  object = merged_data,
+  dims = 1:2, 
+  reduction = 'pca',
+  combine = TRUE
+)
+
+pca_dim_heatmap <- Seurat::DimHeatmap(
+  object = merged_data,
+  dims = 1:6,
+  cells = 500,
+  balanced = TRUE,
+  fast = FALSE
+)
+```
+
+#### PCA
+```{r, echo=FALSE, message=FALSE}
+pca_dim_plot
+```
+
+#### Loadings
+```{r, echo=FALSE, message=FALSE}
+pca_dim_loadings
+```
+
+#### Heatmap
+```{r, echo=FALSE, message=FALSE}
+pca_dim_heatmap
+```
+
+#### Jackstraw
+```{r, echo=FALSE, message=FALSE}
+jackstraw_plot
+```
+
+#### Elbow
+```{r, echo=FALSE, message=FALSE}
+elbow_plot
+```
+
+### Neighbour embedding and clustering
+
+As in PhenoGraph, we first construct a k-nearest neighbour (KNN) graph based on 
+the euclidean distance in PCA space, and refine the edge weights between any two 
+cells based on the shared overlap in their local neighborhoods (Jaccard similarity). 
+This step is performed using the FindNeighbors function, and takes as input the 
+previously defined dimensionality of the dataset (first 15 PCs).
+
+To cluster the cells, we next apply modularity optimization techniques such as the 
+Louvain or Leiden algorithms, to iteratively group cells together, with the goal of 
+optimizing the standard modularity function. The FindClusters function implements this 
+procedure, and contains a resolution parameter that sets the ‘granularity’ of the 
+downstream clustering, with increased values leading to a greater number of clusters. 
+We find that setting this parameter between 0.4-1.2 typically returns good results 
+for single-cell datasets of around 3K cells. Optimal resolution often increases for 
+larger datasets. The clusters can be found using the Idents function. A relatively
+easy explanation of the Louvain and Leiden algorithms is bublished [here](https://www.nature.com/articles/s41598-019-41695-z).
+
+```{r embedding_and_clustering, message=FALSE, warning=FALSE}
+# Constructs a Shared Nearest Neighbor (SNN) Graph for a given dataset. We first 
+# determine the k-nearest neighbors of each cell. We use this knn graph to construct the
+# SNN graph by calculating the neighborhood overlap (Jaccard index) between every cell 
+# and its k.param nearest neighbors.
+merged_data <- FindNeighbors(
+  object = merged_data,
+  k.param = 20,
+  dims = 1:15
+)
+
+# Find clusters by optimizing modularity of a shared nearest neigbour graph using
+# community detection
+# algorithm = 2 (Louvain)
+# algorithm = 4 (Leiden)
+# default resolution is 0.8; use a value above (below) 1.0 if you want to obtain a larger (smaller) number of communities
+merged_data <- FindClusters(
+  object = merged_data,
+  algorithm = 4,
+  resolution = 0.8
+)
+
+merged_data <- RunUMAP(
+  object = merged_data, 
+  dims = 1:15
+)
+```
+
+```{r, echo=FALSE, message=FALSE}
+dat <- merged_data@meta.data
+
+ggplot(dat, aes(x= Phase,  group=group)) + 
+    geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") +
+    geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="group") +
+    facet_grid(~group) +
+    scale_y_continuous(
+      labels = scales::percent
+      ) +
+  theme_bw()
+```
+
+
+### Visualising low-dimensional representations {.tabset}
+
+```{r plots2, echo=FALSE, fig.width=6, fig.height=4}
+umap1 <- Seurat::DimPlot(
+  object = merged_data,
+  reduction = 'umap',
+  group.by = 'group'
+) + theme(
+  axis.text.x=element_blank(),
+  axis.text.y=element_blank(),
+  axis.ticks.x=element_blank(),
+  axis.ticks.y=element_blank(),
+  legend.position = 'right'
+) + scale_color_brewer(palette = "Dark2")
+  
+#scale_color_manual(values = c("#ff8668","gray70", "#5e8aab", "#ffce8e"))
+
+umap2 <- Seurat::DimPlot(
+  object = merged_data,
+  reduction = 'umap',
+  group.by = 'seurat_clusters',
+  label = TRUE
+) + theme(
+  axis.text.x=element_blank(),
+  axis.text.y=element_blank(),
+  axis.ticks.x=element_blank(),
+  axis.ticks.y=element_blank(),
+  legend.position = 'none'
+)
+
+umap3 <- Seurat::DimPlot(
+  object = merged_data,
+  reduction = 'umap',
+  group.by = 'Phase'
+) + theme(
+  axis.text.x=element_blank(),
+  axis.text.y=element_blank(),
+  axis.ticks.x=element_blank(),
+  axis.ticks.y=element_blank(),
+  legend.position = 'bottom'
+)
+
+save(merged_data, file = seurat_object_save)
+```
+
+#### Samples
+```{r, echo=FALSE, message=FALSE}
+umap1
+```
+
+#### Clusters
+```{r, echo=FALSE, message=FALSE}
+umap2
+```
+
+#### Cell cycle
+```{r, echo=FALSE, message=FALSE}
+umap3
+```
+
+
+```{r, echo=FALSE, message=FALSE}
+#plot_grid(umap1,umap2,umap3)
+
+umap1 | (umap2 / umap3)
+```
+
+### Finding marker genes between clusters
+
+Seurat can help you find markers that define clusters via differential expression. 
+By default, it identifes positive and negative markers of a single cluster 
+(specified in ident.1), compared to all other cells. FindAllMarkers automates 
+this process for all clusters, but you can also test groups of clusters vs. 
+each other, or against all cells.
+
+The min.pct argument requires a feature to be detected at a minimum percentage 
+in either of the two groups of cells, and the thresh.test argument requires a 
+feature to be differentially expressed (on average) by some amount between the 
+two groups. You can set both of these to 0, but with a dramatic increase in time - 
+since this will test a large number of features that are unlikely to be highly 
+discriminatory. As another option to speed up these computations, max.cells.per.ident 
+can be set. This will downsample each identity class to have no more cells than 
+whatever this is set to. While there is generally going to be a loss in power, 
+the speed increases can be significiant and the most highly differentially expressed 
+features will likely still rise to the top.
+
+```{r plots_all_markers, message=FALSE}
+markers <- FindAllMarkers(
+  object = merged_data,
+  min.pct = 0.1,
+  logfc.threshold = 1
+)
+```
+
+We will select the top 5 marker genes per cluster and visualise them using a 
+heatmap.
+
+```{r heatmap, fig.width=10, fig.height=8, message=FALSE}
+top5 <- markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_logFC)
+
+Seurat::DoHeatmap(
+  object = merged_data,
+  features = top5$gene
+) + 
+  Seurat::NoLegend() +
+  viridis::scale_fill_viridis(
+    option = 'plasma'
+)
+
+volcano_plot <- function(data){
+  plt <- ggplot(data, aes(x = avg_logFC, y = -log10(p_val_adj)))+
+    geom_point()
+  
+  plot(plt)
+}
+
+#volcano_plot(markers)
+```
+
+### Genes upregulated in adipogenesis
+
+The gene set for genes upregulated in adipogenesis was obtained from 
+[Broad Insitute](http://software.broadinstitute.org/gsea/msigdb/cards/HALLMARK_ADIPOGENESIS.html).
+
+The list contains 200 genes annotated as HALLMARK_ADIPOGENESIS. We visualise 
+this gene set using a heatmap. Many genes were not expressed and therefore omitted
+from the plot.
+
+```{r heatmap_adipogenesis, fig.width=10, fig.height=8, message=FALSE}
+adipo_markers <- read_delim(
+  file = "MSigDB/hallmark_genes_upregulated_during_adipogenesis.txt",
+  delim = "\t",
+  col_names = c("gene")
+)
+
+hm_seurat <- Seurat::DoHeatmap(
+  object = merged_data,
+  features = adipo_markers$gene,
+  group.by = 'group'
+) + 
+  Seurat::NoLegend() +
+  viridis::scale_fill_viridis(
+    option = 'plasma'
+)
+
+
+# custom heatmap
+
+#data <- merged_data[adipo_markers$gene,]
+
+data <- tidyr::spread(hm_seurat$data, Feature, Expression)
+row.names(data) <- data$Cell
+
+annot <- data.frame(group = data$Identity)
+row.names(annot) <- data$Cell
+
+data <- data %>% dplyr::select(-c(Cell, Identity))
+
+write_csv2(data, "./Data/adipogenesis_markers.csv")
+
+
+hm <- pheatmap::pheatmap(
+  mat = t(as.matrix(data)), 
+  angle_col = 45,
+  scale = 'none',annotation_colors =  
+  annotation_col = annot,
+  color = viridis::plasma(n = 10),
+  clustering_method = 'ward.D2', 
+  cluster_cols = FALSE, cluster_rows = FALSE,
+  drop_levels = TRUE,
+  fontsize_col = 6, 
+  show_rownames = TRUE, 
+  show_colnames = FALSE
+)
+
+
+```
+
+### Marker genes by sample
+
+To perform differential expression testing on a Seurat object we use the 
+FindMarkers markers function and define the classes for which to perform the
+comparison using:
+
+- ident.1: Identity class to define markers for
+- ident.2: A second identity class for comparison. If NULL (default) - use all other cells for comparison.
+
+The function can use different methods to perform DE testing:
+
+- Wilcoxon rank sum test (Seurat default)
+- MAST (single-cell RNAseq specific test)
+- DESeq2 with ZinB-wave weights (originally developed for bulk RNAseq data)
+- Other tests such as Student's t-test, poisson and negative bionomial models
+
+Luecken and Theis recommend to use MAST or limma for DE testing, even though
+DEseq2 was also well performing for single cell data despite being orignally
+developed for bulk RNAseq when using it with [ZINB-WaVE](https://www.nature.com/articles/s41467-017-02554-5) (zero inflated negative 
+binomial) weights included in the model. MAST fits two-part, generalized linear models 
+that are specially adapted for bimodal and/or zero-inflated single cell 
+gene expression data. DE testing should be run on uncorrected data with
+technical covariates included in the model.
+
+p-value adjustment in FindMarkers is performed using bonferroni correction based on the total 
+number of genes in the dataset. Other correction methods are not recommended, 
+as Seurat pre-filters genes using the arguments above, reducing the number of 
+tests performed. p-values should be interpreted cautiously, as the genes used for 
+clustering are the same genes tested for differential expression.
+
+When using MAST or possion/negative bionomial model it is possible to define
+covariates using the latent.vars argument. We could use 'nFeature_RNA', 'nCount_RNA' 
+and 'percent.mt' as latent variables and require that genes are expressed in at least
+5\% of cells in at least one of the group compared.
+
+#### Genes differentially regulated between scf-WT and scf-FD
+```{r scf-WT-vs-FD, fig.width=6, fig.height=4, message=FALSE, warning=FALSE}
+if(filter_cell_cycle){
+  markers.scfWT_vs_scfFD <- Seurat::FindMarkers(
+    merged_data, 
+    ident.1 = 'scf-WT', 
+    ident.2 = 'scf-FD',
+    test.use = 'MAST',
+    latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
+    min.pct = 0.05,
+    group.by = 'group'
+  )
+} else {
+  markers.scfWT_vs_scfFD <- Seurat::FindMarkers(
+    merged_data, 
+    ident.1 = 'scf-WT', 
+    ident.2 = 'scf-FD',
+    test.use = 'MAST',
+    latent.var = c('nFeature_RNA'),
+    min.pct = 0.05,
+    group.by = 'group'
+  )
+}
+
+# Select and plot genes with log2-fold-change >= 1 and order genes by log2 fold change
+# for plotting in the heatmap
+marker_selection = markers.scfWT_vs_scfFD[abs(markers.scfWT_vs_scfFD$avg_logFC) >= 1, ]
+marker_selection = marker_selection[order(marker_selection$avg_logFC),]
+
+markers.scfWT_vs_scfFD <- as_tibble(
+  x = markers.scfWT_vs_scfFD,
+  rownames = 'genes'
+)
+
+# Output markers as interactive data table
+DT::datatable(markers.scfWT_vs_scfFD, options = list(pageLength = 5))
+
+# Plot most differentially expressed markers in heatmap
+Seurat::DoHeatmap(
+  object = merged_data,
+  features = rownames(marker_selection),
+  group.by = 'group'
+  ) + 
+  Seurat::NoLegend() + 
+  viridis::scale_fill_viridis(
+    option = 'plasma'
+  )
+```
+
+#### Genes differentially regulated between xen-WT and xen-FD
+```{r xen-WT-vs-FD, fig.width=6, fig.height=4, message=FALSE, warning=FALSE}
+if(filter_cell_cycle){
+  markers.xenWT_vs_xenFD <- Seurat::FindMarkers(
+    merged_data, 
+    ident.1 = 'xenograft-WT', 
+    ident.2 = 'xenograft-FD',
+    test.use = 'MAST',
+    latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
+    min.pct = 0.05,
+    group.by = 'group'
+  )
+} else {
+  markers.xenWT_vs_xenFD <- Seurat::FindMarkers(
+    merged_data, 
+    ident.1 = 'xenograft-WT', 
+    ident.2 = 'xenograft-FD',
+    test.use = 'MAST',
+    latent.var = c('nFeature_RNA'),
+    min.pct = 0.05,
+    group.by = 'group'
+  )
+}
+
+# Select and plot genes with log2-fold-change >= 1 and order genes by log2 fold change
+# for plotting in the heatmap
+marker_selection = markers.xenWT_vs_xenFD[abs(markers.xenWT_vs_xenFD$avg_logFC) >= 1, ]
+marker_selection = marker_selection[order(marker_selection$avg_logFC),]
+
+markers.xenWT_vs_xenFD <- as_tibble(
+  x = markers.xenWT_vs_xenFD,
+  rownames = 'genes'
+)
+
+# Output markers as interactive data table
+DT::datatable(markers.xenWT_vs_xenFD, options = list(pageLength = 5))
+
+# Plot most differentially expressed markers in heatmap
+Seurat::DoHeatmap(
+  object = merged_data,
+  features = rownames(marker_selection),
+  group.by = "group"
+  ) + 
+  Seurat::NoLegend() + 
+  viridis::scale_fill_viridis(
+    option = 'plasma'
+  )
+```
+
+#### Genes differentially regulated between scf-FD and xen-FD
+```{r scf-FD-vs-xen-FD, fig.width=6, fig.height=4, message=FALSE, warning=FALSE}
+if(filter_cell_cycle){
+  markers.scfFD_vs_xenFD <- Seurat::FindMarkers(
+    merged_data, 
+    ident.1 = 'scf-FD', 
+    ident.2 = 'xenograft-FD',
+    test.use = 'MAST',
+    latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
+    min.pct = 0.05,
+    group.by = 'group'
+  )
+} else {
+  markers.scfFD_vs_xenFD <- Seurat::FindMarkers(
+    merged_data, 
+    ident.1 = 'scf-FD', 
+    ident.2 = 'xenograft-FD',
+    test.use = 'MAST',
+    latent.var = c('nFeature_RNA'),
+    min.pct = 0.05,
+    group.by = 'group'
+  )
+}
+
+# Select and plot genes with log2-fold-change >= 1 and order genes by log2 fold change
+# for plotting in the heatmap
+marker_selection = markers.scfFD_vs_xenFD[abs(markers.scfFD_vs_xenFD$avg_logFC) >= 1, ]
+marker_selection = marker_selection[order(marker_selection$avg_logFC),]
+
+markers.scfFD_vs_xenFD <- as_tibble(
+  x = markers.scfFD_vs_xenFD,
+  rownames = 'genes'
+)
+
+# Output markers as interactive data table
+DT::datatable(markers.scfFD_vs_xenFD, options = list(pageLength = 5))
+
+# Plot most differentially expressed markers in heatmap
+Seurat::DoHeatmap(
+  object = merged_data,
+  features = rownames(marker_selection),
+  group.by = "group"
+  ) + 
+  Seurat::NoLegend() + 
+  viridis::scale_fill_viridis(
+    option = 'plasma'
+  )
+```
+
+#### Genes differentially regulated between scf-WT and xen-WT
+```{r scf-WT-vs-xen-WT, fig.width=6, fig.height=4, message=FALSE, warning=FALSE}
+if(filter_cell_cycle){
+  markers.scfWT_vs_xenWT <- Seurat::FindMarkers(
+    merged_data, 
+    ident.1 = 'scf-WT', 
+    ident.2 = 'xenograft-WT',
+    test.use = 'MAST',
+    latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
+    min.pct = 0.05,
+    group.by = 'group'
+  )
+} else {
+  markers.scfWT_vs_xenWT <- Seurat::FindMarkers(
+    merged_data, 
+    ident.1 = 'scf-FD', 
+    ident.2 = 'xenograft-FD',
+    test.use = 'MAST',
+    latent.var = c('nFeature_RNA'),
+    min.pct = 0.05,
+    group.by = 'group'
+  )
+}
+
+# Select and plot genes with log2-fold-change >= 1 and order genes by log2 fold change
+# for plotting in the heatmap
+marker_selection = markers.scfWT_vs_xenWT[abs(markers.scfFD_vs_xenFD$avg_logFC) >= 1, ]
+marker_selection = marker_selection[order(marker_selection$avg_logFC),]
+
+markers.scfWT_vs_xenWT <- as_tibble(
+  x = markers.scfWT_vs_xenWT,
+  rownames = 'genes'
+)
+
+# Output markers as interactive data table
+DT::datatable(markers.scfWT_vs_xenWT, options = list(pageLength = 5))
+
+# Plot most differentially expressed markers in heatmap
+Seurat::DoHeatmap(
+  object = merged_data,
+  features = rownames(marker_selection),
+  group.by = "group"
+  ) + 
+  Seurat::NoLegend() + 
+  viridis::scale_fill_viridis(
+    option = 'plasma'
+  )
+```
+
+### Gene list overlaps
+
+```{r vennDiagrams, eval=FALSE}
+library(VennDiagram)
+library(RColorBrewer)
+
+set1 <- markers.scfWT_vs_scfFD$genes
+set2 <- markers.xenWT_vs_xenFD$genes
+set3 <- markers.scfFD_vs_xenFD$genes
+
+myCol <- brewer.pal(3, "Pastel2")
+
+# Chart
+venn.diagram(
+        x = list(set1, set2, set3),
+        category.names = c("scf.v.scf" , "xen.v.xen" , "scf.v.xen"),
+        filename = 'figures/venn_diagramm.png',
+        output=FALSE,
+        
+        # Output features
+        imagetype="png" ,
+        height = 480 , 
+        width = 480 , 
+        resolution = 300,
+        compression = "lzw",
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = myCol,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.pos = c(-27, 27, 135),
+        cat.dist = c(0.055, 0.055, 0.085),
+        cat.fontfamily = "sans",
+        rotation = 1
+)
+
+set1 <- markers.scfWT_vs_scfFD$genes
+set2 <- markers.xenWT_vs_xenFD$genes
+
+common.markers <- dplyr::intersect(set1, set2)
+```
+
+### Plot individal features {.tabset}
+
+First we examine the expression of EGFP in the samples to verify presence of the
+fusion construct in the FD cells.
+
+Then we plot the expression of different marker genes in UMAP space.
+```{r feature_plots, message=FALSE}
+feature_colors <- rev(viridis::viridis(3))
+
+plot_features <- function(object, features, colors){
+  
+  plt <- Seurat::FeaturePlot(
+    object = object,
+    features = features,
+    combine = FALSE
+  )
+  
+  for(i in 1:length(plt)) {
+    plt[[i]] <- plt[[i]] + theme(
+      axis.text.x=element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.x=element_blank(),
+      axis.ticks.y=element_blank()
+    )
+  }
+  
+  plt <- cowplot::plot_grid(plotlist = plt)
+
+  plot(plt)
+}
+```
+
+```{r feature_plots_gene_list, eval=FALSE}
+# Christoffers gene list
+targets <- read.table("christoffers_gene_list.csv", header = FALSE)
+
+for( gene in targets$V1 ){
+  # Plot genes found in data
+  if(gene %in% rownames(merged_data@assays$RNA@counts)) {
+    print(paste(gene,"found in variable features"), sep = " ")
+  
+    fig <- Seurat::VlnPlot(
+      object = merged_data,
+      features = gene,
+      group.by = 'group',
+      cols = rev(viridis::viridis(4))
+    )
+    
+    filename = paste("figs/2020-02-03_violin_plot_",gene,".png",sep = "")
+    ggsave(filename = filename, plot = fig, device = "png")
+    
+  } else {
+    print(paste(gene,"not found"), sep = " ")
+  }
+}
+
+ggsave("figs/umap.png", plot = umap1, device = "png")
+```
+
+#### EGFP
+```{r, message=FALSE}
+Seurat::VlnPlot(
+  object = merged_data,
+  features = c('eGFP', 'GAPDH'),
+  group.by = 'group',
+  cols = rev(viridis::viridis(6))
+)
+```
+
+#### OSM
+
+```{r, message=FALSE}
+Seurat::VlnPlot(
+  object = merged_data,
+  features = c('OSM', 'OSMR'),
+  group.by = 'group',
+  cols = rev(viridis::viridis(6))
+)
+
+plot_features(
+  object = merged_data,
+  features =  "OSMR",
+  colors = feature_colors
+)
+```
+
+#### Markers
+```{r, message=FALSE}
+features = c("IL24", "PDLIM1", "LINC00958", "CD74", "VCX3B", "VCX")
+
+plot_features(
+  object = merged_data,
+  features =  features,
+  colors = feature_colors
+)
+```
+
+#### Adipocytes
+```{r, message=FALSE}
+features = c("CEBPA", "CEBPB", "PPARD", "PPARA", "PLIN2", "MYC")
+
+plot_features(
+  object = merged_data,
+  features =  features,
+  colors = feature_colors
+)
+```
+
+#### Interleukins
+```{r, message=FALSE}
+features = c(
+  "IL6", "IL6R", "STAT3", "IL7", "IL24",
+  "IL32", "IL1B", "IL7","IL10"
+)
+
+plot_features(
+  object = merged_data,
+  features =  features,
+  colors = feature_colors
+)
+```
+
+#### Angiogenesis
+```{r, message=FALSE}
+features = c(
+  "FLT1","MMP1","VIM","PDGFA","TGFB1",
+  "MMP9","VEGFA","VEGFB","FGF1"
+)
+
+plot_features(
+  object = merged_data,
+  features =  features,
+  colors = feature_colors
+)
+```
+
+# GSEA and GO term analysis
+
+```{r, echo=FALSE}
+##### Customize enricher function to match msigdbr results:
+
+# We need to modifiy the enrichment analysis function to match more  closely the algorythm used in the msigdb website.
+# The main difference is the definition of the universe (background), which in the GSEA web tool is defined as all the 
+# genes in the NCBI database with a common gene name annotation, while in this package it is defined as all the genes that
+# take part in any of the categories of the database analyzed.
+
+enricher_custom <- function(
+  gene,
+  pvalueCutoff,
+  pAdjustMethod = "BH",
+  universe = NULL,
+  minGSSize = 10,
+  maxGSSize = 500,
+  qvalueCutoff = 0.2,
+  USER_DATA) {
+  
+    gene <- as.character(unique(gene))
+    qExtID2TermID <- EXTID2TERMID(gene, USER_DATA)
+    qTermID <- unlist(qExtID2TermID)
+    
+    if (is.null(qTermID)) {
+      message("--> No gene can be mapped....")
+      p2e <- get("PATHID2EXTID", envir = USER_DATA)
+      sg <- unlist(p2e[1:10])
+      sg <- sample(sg, min(length(sg), 6))
+      message("--> Expected input gene ID: ", paste0(sg, collapse = ","))
+      message("--> return NULL...")
+      return(NULL)
+    }
+    qExtID2TermID.df <- data.frame(
+      extID = rep(names(qExtID2TermID),
+                  times = lapply(qExtID2TermID, length)),
+      termID = qTermID
+    )
+    
+    qExtID2TermID.df <- unique(qExtID2TermID.df)
+    qTermID2ExtID <- with(
+      qExtID2TermID.df, split(as.character(extID),as.character(termID))
+    )
+    
+    extID <- ALLEXTID(USER_DATA)
+    
+    if (missing(universe)) 
+      universe <- NULL
+    if (!is.null(universe)) {
+      extID <- as.character(universe)
+    }
+    
+    qTermID2ExtID <- lapply(qTermID2ExtID, intersect, extID)
+    qTermID <- unique(names(qTermID2ExtID))
+    termID2ExtID <- TERMID2EXTID(qTermID, USER_DATA)
+    termID2ExtID <- lapply(termID2ExtID, intersect, extID)
+    geneSets <- termID2ExtID
+    idx <- get_geneSet_index(termID2ExtID, minGSSize, maxGSSize)
+    
+    if (sum(idx) == 0) {
+      msg <- paste("No gene set have size >", minGSSize, "...")
+      message(msg)
+      message("--> return NULL...")
+      return(NULL)
+    }
+    
+    termID2ExtID <- termID2ExtID[idx]
+    qTermID2ExtID <- qTermID2ExtID[idx]
+    qTermID <- unique(names(qTermID2ExtID))
+    
+    k <- sapply(qTermID2ExtID, length)
+    k <- k[qTermID]
+    M <- sapply(termID2ExtID, length)
+    M <- M[qTermID]
+    N <- rep(length(extID), length(M))
+    n <- rep(length(qExtID2TermID), length(M))
+    args.df <- data.frame(
+      numWdrawn = k - 1, 
+      numW = M, 
+      numB = N - M, 
+      numDrawn = n
+    )
+    
+    pvalues <- apply(
+      args.df, 1, function(n) phyper(n[1], n[2], n[3], n[4], lower.tail = FALSE)
+    )
+    
+    GeneRatio <- apply(
+      data.frame(a = k, b = n), 1, function(x) paste(x[1], "/", x[2], sep = "", collapse = "")
+    )
+    
+    BgRatio <- apply(
+      data.frame(a = M, b = N), 1, function(x) paste(x[1], "/", x[2], sep = "", collapse = "")
+    )
+    
+    Over <- data.frame(
+      ID = as.character(qTermID), 
+      GeneRatio = GeneRatio, 
+      BgRatio = BgRatio, 
+      pvalue = pvalues,
+      stringsAsFactors = FALSE
+    )
+    
+    p.adj <- p.adjust(Over$pvalue, method = pAdjustMethod)
+    
+    qobj <- tryCatch(qvalue(p = Over$pvalue, 
+                            lambda = 0.05,
+                            pi0.method = "bootstrap"),
+                     error = function(e) NULL)
+    
+    if (class(qobj) == "qvalue") {
+      qvalues <- qobj$qvalues
+    }
+    else {
+      qvalues <- NA
+    }
+    
+    geneID <- sapply(qTermID2ExtID, function(i) paste(i, collapse = "/"))
+    geneID <- geneID[qTermID]
+    
+    Over <- data.frame(
+      Over,
+      p.adjust = p.adj,
+      qvalue = qvalues,
+      geneID = geneID, 
+      Count = k, 
+      stringsAsFactors = FALSE
+    )
+    
+    Description <- TERM2NAME(qTermID, USER_DATA)
+    
+    if (length(qTermID) != length(Description)) {
+      idx <- qTermID %in% names(Description)
+      Over <- Over[idx, ]
+    }
+    
+    Over$Description <- Description
+    nc <- ncol(Over)
+    Over <- Over[, c(1, nc, 2:(nc - 1))]
+    Over <- Over[order(pvalues), ]
+    Over$ID <- as.character(Over$ID)
+    Over$Description <- as.character(Over$Description)
+    row.names(Over) <- as.character(Over$ID)
+    
+    x <- new("enrichResult", result = Over, pvalueCutoff = pvalueCutoff, 
+             pAdjustMethod = pAdjustMethod, qvalueCutoff = qvalueCutoff, 
+             gene = as.character(gene), universe = extID, geneSets = geneSets, 
+             organism = "UNKNOWN", keytype = "UNKNOWN", ontology = "UNKNOWN", 
+             readable = FALSE)
+    
+    return(x)
+}
+
+enricher_edit<-function(gene, pvalueCutoff = 0.05, pAdjustMethod = "BH", universe, 
+                         minGSSize = 10, maxGSSize = 500, qvalueCutoff = 0.2, TERM2GENE, 
+                         TERM2NAME = NA) 
+{
+  USER_DATA <- build_Anno(TERM2GENE, TERM2NAME)
+  enricher_custom(gene = gene, pvalueCutoff = pvalueCutoff, 
+                  pAdjustMethod = pAdjustMethod, universe = universe, minGSSize = minGSSize, 
+                  maxGSSize = maxGSSize, qvalueCutoff = qvalueCutoff, USER_DATA = USER_DATA)
+}
+
+body(enricher)<-body(enricher_edit)
+
+environment(enricher_custom)<-environment(clusterProfiler:::enricher_internal)
+```
+
+Next we perform gene set enrichment (GSEA) and gene ontology (GO) analysis. We
+will look at four reference databases:
+
+- Gene ontology, biological processes (GO_BP)
+- Reactome pathways 
+- Hallmarks gene sets represent specific well-defined biological states or processes and display coherent expression
+- Transcription factor targets (TFT)
+
+We will plot the top 30 enrichments for each of the four groups for each
+comparison made above.
+
+## Scaffold WT vs. scaffold FD {.tabset}
+
+```{r load_GO_data, message=FALSE}
+GO_BP <- read.gmt("MSigDB/c5.bp.v7.0.symbols.gmt")
+Reactome <- read.gmt("MSigDB/c2.cp.reactome.v7.0.symbols.gmt")
+Hallmarks <- read.gmt("MSigDB/h.all.v7.0.symbols.gmt")
+TFT <- read.gmt("MSigDB/c3.tft.v7.0.symbols.gmt")
+
+hgnc_symbols <- read.csv("MSigDB/hgnc.txt", sep = '\t', header=TRUE)
+hgnc_symbols <- hgnc_symbols$Approved.symbol
+
+gene = markers.scfWT_vs_scfFD %>% 
+  dplyr::filter(p_val_adj < 0.01) 
+gene <- gene$genes
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=GO_BP,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+go_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=Hallmarks,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+hallmarks_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=Reactome,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+reactome_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=TFT,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+tft_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+```
+
+### Gene ontology
+```{r, echo=FALSE}
+go_plot
+```
+
+### Hallmarks
+```{r, echo=FALSE}
+hallmarks_plot
+```
+
+### Reactome
+```{r, echo=FALSE}
+reactome_plot
+```
+
+### TFT
+```{r, echo=FALSE}
+tft_plot
+```
+
+## Xenograft WT vs. xenograft FD {.tabset}
+
+```{r GO2, message=FALSE}
+gene = markers.xenWT_vs_xenFD %>% 
+  dplyr::filter(p_val_adj < 0.01) 
+gene <- gene$genes
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=GO_BP,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+go_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=Hallmarks,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+hallmarks_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=Reactome,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+reactome_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=TFT,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+tft_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+```
+
+### Gene ontology
+```{r, echo=FALSE}
+go_plot
+```
+
+### Hallmarks
+```{r, echo=FALSE}
+hallmarks_plot
+```
+
+### Reactome
+```{r, echo=FALSE}
+reactome_plot
+```
+
+### TFT
+```{r, echo=FALSE}
+tft_plot
+```
+
+## Scaffold WT vs. xenograft WT {.tabset}
+
+```{r GO_WT_WT, message=FALSE}
+gene = markers.scfWT_vs_xenWT %>% 
+  dplyr::filter(p_val_adj < 0.01) 
+gene <- gene$genes
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=GO_BP,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+go_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=Hallmarks,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+hallmarks_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=Reactome,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+reactome_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=TFT,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+tft_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+```
+
+### Gene ontology
+```{r, echo=FALSE}
+go_plot
+```
+
+### Hallmarks
+```{r, echo=FALSE}
+hallmarks_plot
+```
+
+### Reactome
+```{r, echo=FALSE}
+reactome_plot
+```
+
+### TFT
+```{r, echo=FALSE}
+tft_plot
+```
+
+Next, we look a common markers differentially both in scf-WT vs scf-FD and
+xen-WT vs xen-FD.
+
+## Commonly regulated genes {.tabset}
+
+```{r go_common_markers, message=FALSE, eval=FALSE}
+gene = common.markers
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=GO_BP,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+go_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=Hallmarks,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+hallmarks_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=Reactome,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+reactome_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=TFT,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+tft_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+```
+
+### Gene ontology
+```{r, echo=FALSE}
+go_plot
+```
+
+### Hallmarks
+```{r, echo=FALSE}
+hallmarks_plot
+```
+
+### Reactome
+```{r, echo=FALSE}
+reactome_plot
+```
+
+### TFT
+```{r, echo=FALSE}
+tft_plot
+```
+
+Finally, we look at highly variable genes that are enriched globally, 
+across all samples.
+
+## Markers for highly variable genes {.tabset}
+
+```{r GO3, message=FALSE}
+gene <- VariableFeatures(object = merged_data)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=GO_BP,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+go_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=Hallmarks,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+hallmarks_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=Reactome,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+reactome_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+
+egmt <- enricher(
+  gene,
+  TERM2GENE=TFT,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = 'fdr',
+  minGSSize = NA,
+  maxGSSize = NA,
+  qvalueCutoff = 0.05,
+  universe = hgnc_symbols
+)
+
+tft_plot <- dotplot(
+  egmt,
+  showCategory = 20,
+  font.size = 7
+)
+```
+
+### Gene ontology
+```{r, echo=FALSE}
+go_plot
+```
+
+### Hallmarks
+```{r, echo=FALSE}
+hallmarks_plot
+```
+
+### Reactome
+```{r, echo=FALSE}
+reactome_plot
+```
+
+### TFT
+```{r, echo=FALSE}
+tft_plot
+```
+
+# Trajectory inference/Pseudotime ordering
+
+There are many methods available for pseudotime ordering/trajectory inference. 
+[Saelens et al.](https://www.nature.com/articles/s41587-019-0071-9.pdf) 
+reviewed 45 different algorithms. They find that no algorithm works for all data
+sets and the best algorithm to use depends on the actual topology of the data.
+Therefore they recommend to test different algorithms which make slightly
+different assumptions and compare the results. If a result is robust across
+multiple tools it is most likely to be correct. The algorithms chosen below
+have scored high for accuracy and stability, can detect most topologies and
+have the highest likelihood of obtaining a top model. They also use different 
+methods for trajectory inference (graph, tree or linear) and most require no
+prior knowledge about start or end points of the trajectory.
+
+We chose three methods implemented in R:
+
+- [slingshot](https://bioconductor.org/packages/release/bioc/vignettes/slingshot/inst/doc/vignette.html#using-slingshot), 
+- [Monocle DDRTree](http://cole-trapnell-lab.github.io/monocle-release/) and
+- [SCORPIUS](https://cran.r-project.org/web/packages/SCORPIUS/index.html)
+- Additionally we implement the [PAGA algorithm](https://genomebiology.biomedcentral.com/track/pdf/10.1186/s13059-019-1663-x) written in Python.
+
+PAGA and RaceID are graph-based, whereas slingshot and monocle use tree-based algorithms.
+All four have free topology inference, i.e. they don't make prior assumptions
+about the underlying topology and can infer multiple types of trajectory. SCORPIUS
+has a fixed linear topology, i.e. the graph will always be a single line without
+branches. PAGA requires to set a cell population as the starting point of
+the trajectory, either a cluster or a sample. The others require no priors.
+
+Implementations of all algorithms from the Saelens review can be found
+as docker containers with an API implemented in the [dynverse](https://dynverse.org/users/1-installation/) package.
+
+A note on usage: PAGA, Scorpius and slingshot run very fast (seconds), wheras monocle
+DDRTree and RaceID requires >30 min, for a dataset with 4000 cells and 10k features. Runtimes
+may scale differently for each algorithm.
+
+## Cell trajectory using slingshot
+
+```{r slingshot, eval=TRUE, echo=TRUE}
+
+scaffolds.sce <- Seurat::as.SingleCellExperiment(merged_data)
+
+colData(scaffolds.sce)$leiden <- as.character(
+  merged_data@meta.data$seurat_clusters
+)
+colData(scaffolds.sce)$sample <- as.character(
+  merged_data@meta.data$group
+)
+
+sce <- slingshot(
+  data = scaffolds.sce,
+  reducedDim = 'UMAP',
+  clusterLabels = 'sample'
+)
+
+col = brewer.pal(9,'Set1')[sce$sample]
+
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+plotcol <- colors[cut(sce$slingPseudotime_1, breaks=100)]
+
+plot(reducedDims(sce)$UMAP, col = plotcol, pch=16, asp = 1, frame.plot=TRUE)
+lines(SlingshotDataSet(sce), lwd = 3, col = 'black')
+
+genes <- c('IL24', 'PDLIM1', 'LINC00958', 'CD74', 'VCX3B', 'VCX')
+
+plot_pseudotime_order <- function(object, genes, sce){
+  
+  # Select genes to plot in pseudotime
+  expression_matrix <- t(as.data.frame(object@assays$RNA@data))
+  pseudotime <- data.frame(colnames(sce), sce$slingPseudotime_1)
+  
+  selection <- as_tibble(expression_matrix[,colnames(expression_matrix) %in% genes])
+  selection$pseudotime <- pseudotime$sce.slingPseudotime_1
+  selection$sample <- sce$group
+  selection$cluster <- sce$seurat_clusters
+  
+  pheatmap(
+    mat = selection[,-3],
+    cluster_rows = TRUE, 
+    cluster_cols = FALSE,
+    color = viridis::viridis(option = 'plasma')[256]
+  )
+}
+```
+
+## SCORPIUS
+
+```{r scorpius, eval=TRUE}
+expression <- t(as.data.frame(merged_data@assays$RNA@data))
+groups <- data.frame(merged_data@meta.data$group)
+rownames(groups) <- rownames(merged_data@meta.data)
+
+space <- reduce_dimensionality(
+  x = expression,
+  dist = 'pearson',
+  ndim = 3
+)
+
+trajectory <- infer_trajectory(space)
+
+
+draw_trajectory_plot(
+  space = space, 
+  progression_group = groups$merged_data,
+  contour = TRUE,
+  path = trajectory$path
+)
+
+
+
+```
+
+## Pseudotime ordering using Monocole 2 DDRTree
+
+Monocle performs differential expression and time-series analysis for single-cell 
+expression experiments. It orders individual cells according to progress through 
+a biological process, without knowing ahead of time which genes define progress 
+through that process. Monocle also performs differential expression analysis, 
+clustering, visualization, and other useful tasks on single cell expression data. 
+It is designed to work with RNA-Seq and qPCR data, but could be used with other 
+types as well.
+
+```{r monocle2-DDTree, eval=FALSE, message=FALSE}
+data <- as(as.matrix(merged_data@assays$RNA@data),'sparseMatrix')
+pd <- new('AnnotatedDataFrame', data=merged_data@meta.data)
+
+fData  <- data.frame(
+  gene_short_name = row.names(data),
+  row.names = row.names(data)
+)
+
+fd <- new('AnnotatedDataFrame', data = fData)
+
+scedata <- monocle::newCellDataSet(
+  cellData = data,
+  phenoData = pd,
+  featureData = fd,
+  lowerDetectionLimit = 0.5,
+  expressionFamily = VGAM::negbinomial.size()
+)
+
+scedata <- estimateSizeFactors(scedata)
+scedata <- estimateDispersions(scedata)
+
+scedata<- monocle::detectGenes(scedata, min_expr = 0.1)
+
+fData(scedata)$use_for_ordering <- 
+  fData(scedata)$num_cells_expressed > 0.05*ncol(scedata)
+
+
+scedata <- monocle::reduceDimension(
+  scedata,
+  max_components = 2,
+  norm_method = 'log',
+  #num_dim = 3,
+  #residualModelFormulaStr = "~nCount_RNA",
+  reduction_method = 'tSNE',
+  verbose = TRUE
+)
+
+# Clustering based on density peaks
+scedata <- monocle::clusterCells(
+  scedata,
+  verbose = FALSE
+)
+
+# Visualize clisters
+monocle::plot_cell_clusters(
+  scedata,
+  color_by = 'as.factor(Cluster)'
+)
+
+# Plot the decision plot for users to  decide the threshold for defining the cell clusters.
+monocle::plot_rho_delta(
+  scedata,
+  rho_threshold = 1,
+  delta_threshold = 10
+)
+
+# Recluster based on manually chosen parameters for Delta and Rho
+scedata <- monocle::clusterCells(
+  scedata,
+  rho_threshold = 1,
+  delta_threshold = 10,
+  skip_rho_sigma = TRUE,
+  verbose = FALSE
+)
+
+monocle::plot_cell_clusters(
+  scedata, 
+  color_by = 'group'
+)
+
+monocle::plot_cell_clusters(
+  scedata,
+  color_by = 'as.factor(Cluster)'
+)
+
+clustering_DEG_genes <- monocle::differentialGeneTest(
+  scedata,
+  fullModelFormulaStr = '~Cluster',
+  cores = 2
+)
+
+# select the top 1000 significant genes as the ordering genes
+scedata_ordering_genes <- row.names(clustering_DEG_genes)[order(clustering_DEG_genes$qval)][1:500]
+
+cds <- monocle::setOrderingFilter(
+  scedata,
+  ordering_genes = scedata_ordering_genes
+)
+
+cds <- monocle::reduceDimension(
+  cds,
+  method = 'DDRTree'
+)
+
+cds <- monocle::orderCells(cds)
+
+save(cds,file = cds_data)
+write_csv2(clustering_DEG_genes, gene_expression)
+write_csv2(data.frame(gene=scedata_ordering_genes), "./Data/ordering_genes.csv")
+
+#cds <- monocle::orderCells(cds, root_state = GM_state(scedata))
+```
+
+We visualise the cells in pseudotime and according to sample type in reduced
+space.
+
+```{r monocle2-plots, eval=FALSE, message=FALSE}
+plot1 <- monocle::plot_cell_trajectory(
+  cds = cds,
+  color_by = "Pseudotime"
+) + scale_color_viridis_c()
+
+plot2 <- monocle::plot_cell_trajectory(
+  cds = cds, 
+  color_by = "group"
+)
+
+plot1 + plot2
+```
+
+Lastly, we show genes differentially regulated across pseudotime. In the heatmap
+each column is a cell ordered by pseudotime. Each row is a significantly regulated
+gene across pseuodtime. The genes are ordered by hierarchical clustering to find
+groups of genes that are commonly regulated in pseudotime.
+
+```{r monocle2-plots3, eval=FALSE, message=FALSE}
+to_be_tested <- row.names(
+  clustering_DEG_genes)[order(clustering_DEG_genes$qval)][1:100]
+
+cds_subset <- cds[to_be_tested,]
+
+diff_test_res <- monocle::differentialGeneTest(
+  cds_subset,
+  fullModelFormulaStr = "~sm.ns(Pseudotime)"
+)
+
+sig_gene_names <- row.names(subset(diff_test_res, qval < 0.01))
+
+data <- cds_subset[sig_gene_names,]
+
+pd <- pData(cds_subset[sig_gene_names,])
+
+monocle::plot_pseudotime_heatmap(
+  cds_subset[sig_gene_names,],
+  num_clusters = 4,
+  cores = 2,
+  cluster_rows = TRUE,
+  norm_method = 'vstExprs',
+  show_rownames = TRUE,
+  hmcols = viridis::magma(256)
+)
+
+#diff_test_res[,c("gene_short_name", "pval", "qval")]
+#monocle::plot_genes_in_pseudotime(cds_subset, color_by = "Pseudotime")
+#monocle::plot_genes_in_pseudotime(cds_subset, color_by = "group")
+```
+
+## Monocle version 3 (beta version)
+
+```{r monocle_v3, eval=FALSE}
+library(monocle3)
+
+data <- as(as.matrix(merged_data@assays$RNA@counts),'sparseMatrix')
+
+pd <- merged_data@meta.data
+
+fData  <- data.frame(
+  gene_short_name = row.names(data),
+  row.names = row.names(data)
+)
+
+cds <- monocle3::new_cell_data_set(
+  data,
+  cell_metadata = pd,
+  gene_metadata = fData
+)
+
+cds <- monocle3::preprocess_cds(cds, num_dim = 50)
+
+#cds <- monocle3::align_cds(cds = cds, preprocess_method = "PCA")
+
+cds <- monocle3::reduce_dimension(
+  cds = cds,
+  preprocess_method = "PCA",
+  reduction_method = "UMAP"
+)
+
+cds <- monocle3::cluster_cells(
+  cds = cds,
+  reduction_method = "UMAP",
+  cluster_method = "leiden"
+)
+
+cds <- monocle3::learn_graph(
+  cds = cds,
+  use_partition = FALSE
+)
+
+monocle3::plot_cells(
+  cds = cds,
+  label_groups_by_cluster=FALSE,
+  color_cells_by = "group"
+)
+
+monocle3::plot_cells(
+  cds,
+  color_cells_by = "partition"
+)
+
+# a helper function to identify the root principal points:
+#get_earliest_principal_node <- function(cds, bin="xenograft-WT"){
+#  cell_ids <- which(colData(cds)[, "group"] == bin)
+#  closest_vertex <-
+#  cds@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
+#  closest_vertex <- as.matrix(closest_vertex[colnames(cds), ])
+#  root_pr_nodes <-
+#  igraph::V(principal_graph(cds)[["UMAP"]])$name[as.numeric(names
+#  (which.max(table(closest_vertex[cell_ids,]))))]
+#  
+#  root_pr_nodes
+#}
+cds <- order_cells(
+  cds = cds, 
+  root_cells = NULL,
+  reduction_method = "UMAP"
+)
+#cds <- monocle3::order_cells(cds, root_pr_nodes=get_earliest_principal_node(cds))
+
+dim_plot_monocle <- monocle3::plot_cells(
+  cds,
+  color_cells_by = "group",
+  group_label_size = 4,
+  label_groups_by_cluster=TRUE,
+  label_leaves=TRUE,
+  label_branch_points=TRUE
+)
+
+pseudotime <- monocle3::plot_cells(
+  cds,
+  color_cells_by = "pseudotime",
+  label_cell_groups=FALSE,
+  label_leaves=FALSE,
+  label_branch_points=FALSE,
+  graph_label_size=1.5
+)
+
+CombinePlots(plots = list(dim_plot_monocle, pseudotime))
+pr_graph_test <- graph_test(cds, k=3, cores=1)
+
+# Print no. of differentially expressed genes
+n_DE_genes <- nrow(subset(pr_graph_test, q_value < 0.01))
+print(paste("Number of DE genes over the trajectory: ", n_DE_genes, sep = ""))
+
+# Select top 100 differentially expressed genes based on q value (adjusted p value)
+top100 <- dplyr::add_rownames(pr_graph_test) %>%
+  dplyr::arrange(plyr::desc(morans_test_statistic), plyr::desc(-q_value)) %>% 
+  head(100)
+top100 <- top100$rowname
+
+# Save cds file as Rdata object
+save(cds, file = "cds.Rdata")
+
+# 3D-plot
+cds_3d <- reduce_dimension(cds, reduction_method = "UMAP", max_components = 3)
+cds_3d <- cluster_cells(cds_3d, reduction_method = "UMAP", cluster_method = "leiden")
+cds_3d <- learn_graph(cds_3d,use_partition = FALSE)
+cds_3d_plot_obj <- plot_cells_3d(cds_3d, color_cells_by = "group")
+
+# Extract meta data for each cell (barcode)
+point.data <- pseudotime$data
+# Sort data by pseudotime
+point.data <- point.data[order(point.data$cell_color),]
+
+
+cds_subset <- cds[top100,]
+
+expression_matrix <- t(cds_subset@assayData$exprs)[rownames(point.data),]
+
+# Plot individual genes acroos pseudotime
+data_subset <- cbind(expression_matrix, point.data)
+plot <- ggplot(data = data_subset, mapping = aes(x = cell_color, y = IL24)) + 
+  geom_point(mapping = aes(color = group)) +
+  geom_smooth(se=FALSE, method="loess", span=0.5, color = "black")
+  
+plot
+
+
+km<- kmeans(x = t(as.matrix(expression_matrix)),centers = 4)
+
+# red: scf FD - #F8766D
+# grün: scf WT - #7CAE00
+# cyan: xen FD - #00BFC4
+# violett: xen WT - #C77CFF
+
+col_vec <- point.data$orig.ident %>% 
+  dplyr::recode(xFD = "#00BFC4", FD = "#F8766D", WT = "#7CAE00", xWT = "#C77CFF")
+
+gplots::heatmap.2(
+  x = t(as.matrix(expression_matrix)),
+  labCol = FALSE, 
+  dendrogram = "none",
+  trace = "none",
+  col = viridis::magma(256),
+  ColSideColors=as.character(col_vec),
+  RowSideColors=as.character(km$cluster),
+  key = FALSE
+)
+```
+
+# Session info
+
+```{r sessionInfo}
+sessionInfo()
+```
