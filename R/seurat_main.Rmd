@@ -1,0 +1,670 @@
+---
+title: "Single-cell RNA seq pipeline for 10x Genomic data"
+author: "Stefan Filges"
+date: '`r format(Sys.Date())`'
+output: 
+  html_document:
+    theme: sandstone
+    highlight: tango
+    code_folding: hide
+    toc: true
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# About this document
+
+This document provides the main single cell analysis workflow of
+
+- loading single RNA-seq generated with 10x Genomics
+- filtering, normalisation
+- (optional) cell cycle regression
+- dimensionality reduction
+- clustering
+
+The output are various plots and a data object containing the raw and processed
+information for use in other applications.
+
+Other scripts can be run on the data output from this document to do the following:
+
+- differential gene expression analysis
+- gene set enrichment analysis
+- pseudotime ordering
+
+Parameters at most steps can be altered but might change the results substantially. A attempt
+was made to follow current best practices (as of `r format(Sys.Date())`), outlined below.
+
+# Seurat pipeline
+## Background and sources
+Single-cell RNA-seq methods develop rapidly and no standardized workflow exists.
+This analysis is based on current best practices as outlined by [Luecken and Theis](https://www.embopress.org/doi/10.15252/msb.20188746) (June 2019). Major analysis platforms
+are Seurat and Scater (written in R) and scanpy (written in Python). A web-based
+course and overview of scRNA-seq methods, including Seurat, is maintained by
+[the Hemberg lab](https://scrnaseq-course.cog.sanger.ac.uk/website/index.html).
+
+We use the Seurat package maintained by the [Satija lab](https://satijalab.org/seurat/) and available through [CRAN](https://cran.r-project.org/web/packages/Seurat/index.html). The version used here is
+Seurat 3.0 (Released April 16, 2019). See their guided tutorials and the review
+above for detailed explanations. Packages and algorithms used are linked to
+published articles or repositories for further information.
+
+## Loading packages and setting main parameters
+
+First we load packages required for the main analysis, plotting and for later
+pseudotime ordering using multiple different algorithms. 
+
+At this step we also decide if cell cycle affects should be regressed using the
+filter_cell_cycle parameters.
+
+The user must supply a working directory to use for importing data and generating
+outputs.
+
+```{r packages, message=FALSE, warning=FALSE}
+# define the working directory
+working_directory <- "~/Data Files/10x_single_cell_data_for manuscript"
+setwd(working_directory)
+
+# run sctransform, this replaces the NormalizeData, ScaleData and FindVariableFeatures
+sctransform = FALSE
+
+# Should cell cycle filtering be applied or not?
+filter_cell_cycle = TRUE
+
+# Packages for main analysis, clustering, data structures etc.
+suppressMessages(library(Seurat, quietly = TRUE))
+suppressMessages(library(mclust, quietly = TRUE))
+suppressMessages(library(biomaRt, quietly = TRUE))
+suppressMessages(library(msigdbr, quietly = TRUE))
+suppressMessages(library(clusterProfiler, quietly = TRUE))
+suppressMessages(library(destiny, quietly = TRUE))
+suppressMessages(library(SummarizedExperiment, quietly = TRUE))
+suppressMessages(require(clusterExperiment, quietly = TRUE))
+suppressMessages(library(MAST, quietly = TRUE))
+suppressMessages(library(DESeq2, quietly = TRUE))
+suppressMessages(library(sctransform, quietly = TRUE))
+
+# Packages for data handeling and plotting
+suppressMessages(library(reshape, quietly = TRUE))
+suppressMessages(library(cowplot, quietly = TRUE))
+suppressMessages(library(tidyverse, quietly = TRUE))
+suppressMessages(library(viridis, quietly = TRUE))
+suppressMessages(library(RColorBrewer, quietly = TRUE))
+suppressMessages(library(VennDiagram, quietly = TRUE))
+suppressMessages(library(DT, quietly = TRUE))
+```
+
+## Set up the Seurat objects
+
+The first step is creating Seurat object for each sample to be analyzed. Here we read in data generated using the 10x Chromium platform (v2 or v3 chemistry). Raw sequencing files were processed using the [Cellranger pipeline](https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/what-is-cell-ranger) from 10x Genomics, which generates aligment files using [STAR](https://dx.doi.org/10.1093%2Fbioinformatics%2Fbts635) and barcode matrices. The Cellranger output is then loaded into a Seurat object using the Read10X function. Cellranger
+was run on an Ubuntu 18.04 cluster at Gothenburg University, Sweden.
+
+Alternative workflows for generating count matrices are [kallisto/bustools](https://www.kallistobus.tools/). Kallisto uses pseudoalignment which
+requires far less time and computational resources than explicit genome alignment,
+which is usually not important for transcript counting. Bustools is a suite for
+generating BUS files (Barcode, UMI, Set) which are intermediate binary storage
+files for UMI based sequencing data and typically smaller than bam files.
+Bus files can be imported into R using the 
+[BUSpaRse package](https://github.com/BUStools/BUSpaRse). Details can be found
+in a recent [publication](https://academic.oup.com/bioinformatics/article/35/21/4472/5487510).
+
+We will apply some early filtering here by requiring min.cells = 5. min.cells only includes features detected in at least this many cells. Will subset the counts matrix as well. To reintroduce excluded features, create a new object with a lower cutoff.
+
+```{r loadObjects, message=FALSE, warning=FALSE}
+#---------------- 2d cultures -------------------
+# Analyze HT1080 EWS-FLI 2D cultured cells
+ews_2d <- Read10X(data.dir = "HT1080_2D_EF/outs/filtered_feature_bc_matrix/")
+ews_2d <- CreateSeuratObject(ews_2d, project = "2d_EWS", min.cells = 5)
+ews_2d$group <- "2D-EWS"
+
+# Analyze HT1080 FUS-DDIT3 2D cultured cells
+fd_2d <- Read10X(data.dir = "HT1080_2D_FD/outs/filtered_feature_bc_matrix/")
+fd_2d <- CreateSeuratObject(fd_2d,project = "2d_FD", min.cells = 5)
+fd_2d$group <- "2D-FD"
+
+# Analyze plasmid controls controls
+wt_2d <- Read10X(data.dir = "HT1080_2D_WT/outs/filtered_feature_bc_matrix/")
+wt_2d <- CreateSeuratObject(wt_2d,project = "2d_WT", min.cells = 5)
+wt_2d$group <- "2D-WT"
+
+#---------------- scaffold cultures -------------------
+# Analyze FUS-DDIT3 samples
+fd_scf <- Read10X("HT1080_Scf_FD/outs/filtered_gene_bc_matrices/custom_egfp_hg38/")
+fd_scf <- CreateSeuratObject(fd_scf,project = "scf_FD", min.cells = 5)
+fd_scf$group <- "scf-FD"
+
+# Analyze EGFP control samples
+egfp_scf <- Read10X("HT1080_Scf_EGFP/outs/filtered_gene_bc_matrices/custom_egfp_hg38/")
+egfp_scf <- CreateSeuratObject(egfp_scf,project = "scf_eGFP", min.cells = 5)
+egfp_scf$group <- "scf-EGFP"
+
+# Analyze WT samples
+wt_scf <- Read10X("HT1080_Scf_WT/outs/filtered_gene_bc_matrices/custom_egfp_hg38/")
+wt_scf <- CreateSeuratObject(wt_scf,project = "scf_WT", min.cells = 5)
+wt_scf$group <- "scf-WT"
+
+#---------------- xenograft cultures -------------------
+# Analyze WT samples
+wt_xen <- Read10X("HT1080_Xen_WT/outs/filtered_gene_bc_matrices/custom_egfp_hg38/")
+wt_xen <- CreateSeuratObject(wt_xen,project = "xen_WT", min.cells = 5)
+wt_xen$group <- "xenograft-WT"
+
+# Analyze FUS-DDIT3 samples
+fd_xen <- Read10X("HT1080_Xen_FD/HT1080_FD_mouse_custom_hg38/filtered_gene_bc_matrices/custom_egfp_hg38/")
+fd_xen <- CreateSeuratObject(fd_xen,project = "xen_FD", min.cells = 5)
+fd_xen$group <- "xenograft-FD"
+```
+
+## Standard pre-processing workflow
+
+The steps below encompass the standard pre-processing workflow for scRNA-seq data 
+in Seurat. These represent the (i) selection and filtration of cells based on QC metrics, 
+(ii) data normalization and scaling, and (iii) the detection of highly variable features.
+
+### Merge all data object into a common experiment
+
+First Seurat object for individual samples are merged to faciliate their
+combined analysis. For each sample we print out the number of cells.
+
+```{r merge, fig.width=8, fig.height=8, message=FALSE, warning=FALSE}
+# Merged dataset
+merged_data <- merge(
+  x = wt_scf,
+  y = c(wt_xen, fd_scf, fd_xen),
+  add.cell.ids = c('wt-scf', 'wt-xen', 'fd-scf', 'fd-xen'),
+  project = 'scaffold'
+)
+
+unique(x = sapply(X = strsplit(x = colnames(
+  x = merged_data), split = '_'), FUN = '[', 1))
+
+table(merged_data$orig.ident)
+```
+
+### Quality control {.tabset}
+
+Mitochondrial gene expression can be a confounding factor and very high
+mtDNA expression might indicate dead cells which should be removed from further
+analysis.
+
+We plot nFeature_RNA (= number of genes per cell), nCount_RNA (= number of 
+transcripts per cell) and percentage of mtDNA expression and filter cells
+accordingly. When performing QC variables should be considered jointly.
+For instance high mtDNa expression may also reflect cells with high 
+respiratory activity rather than lysed cells.
+
+```{r preproc, echo = FALSE}
+# store mitochondrial percentage in object meta data
+merged_data[["percent.mt"]] <- PercentageFeatureSet(
+  object = merged_data, 
+  pattern = "^MT-"
+)
+
+plot1 <- FeatureScatter(
+  object = merged_data,
+  feature1 = "nCount_RNA",
+  feature2 = "percent.mt",
+  group.by = "group"
+) + theme(
+  legend.position = "bottom",
+  legend.title = element_blank()
+)
+
+plot2 <- FeatureScatter(
+  object = merged_data,
+  feature1 = "nCount_RNA",
+  feature2 = "nFeature_RNA",
+  group.by = "group"
+) + theme(
+  legend.position = "bottom",
+  legend.title = element_blank()
+)
+```
+
+#### Violin
+
+```{r, echo=FALSE}
+VlnPlot(
+  object = merged_data, 
+  features = c('nFeature_RNA', 'nCount_RNA', 'percent.mt'), 
+  ncol = 3, 
+  group.by = 'group',
+  log = TRUE
+) + theme(axis.title.x = element_blank())
+```
+
+#### Scatter
+
+```{r, echo =FALSE}
+plot1 + plot2
+```
+
+### Filter dead cells and doublets {.tabset}
+
+From the scatter plot of transcripts counts vs. mtDNA we can see that cells
+with very high mtDNA content > 20\% also have very low transcript numbers and
+are therefore probably lysed cells and should be removed.
+
+```{r , message=FALSE}
+# Filter data to remove dead cells, outliers
+merged_data <- subset(
+  x = merged_data,
+  subset = nFeature_RNA > 2000 & nFeature_RNA < 8000 & percent.mt < 10
+)
+
+# Plot percent mito DNA and mRNA count after filtering
+plot1 <- Seurat::FeatureScatter(
+  object = merged_data,
+  feature1 = "nCount_RNA",
+  feature2 = "percent.mt",
+  group.by = "group"
+) + theme(
+  legend.position = "bottom",
+  legend.title = element_blank()
+)
+
+plot2 <- Seurat::FeatureScatter(
+  object = merged_data,
+  feature1 = "nCount_RNA",
+  feature2 = "nFeature_RNA",
+  group.by = "group"
+) + theme(
+  legend.position = "bottom",
+  legend.title = element_blank()
+)
+```
+
+#### Scatter
+```{r , echo=FALSE}
+plot1 + plot2
+```
+
+#### Violin
+
+```{r }
+# Visualize QC metrics as a violin plot
+VlnPlot(
+  object = merged_data, 
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+  ncol = 3, 
+  group.by = "group"
+)
+```
+
+### Normalizing the data using regularized negative binomial regression {.tabset}
+
+We normalise the data either using [sctransform](https://www.biorxiv.org/content/10.1101/576827v1)
+or using the standard Seurat workflow depending on the setting of the 
+sctransform variable.
+
+sctransform models the expression of each gene as a negative binomial random variable with a mean that depends on other variables. Here the other variables can be used to model the differences in sequencing depth between cells and are used as independent variables in a regression model. In order to avoid overfitting, we will first fit model parameters per gene, and then use the relationship between gene mean and parameter values to fit parameters, thereby combining information across genes. Given the fitted model parameters, we transform each observed UMI count into a Pearson residual which can be interpreted as the number of standard deviations an observed count was away from the expected mean. If the model accurately describes the mean-variance relationship and the dependency of mean and latent factors, then the result should have mean zero and a stable variance across the range of expression. During normalization, we can also remove confounding sources of variation, for example, mitochondrial mapping percentage.
+
+We can also assign each cell a cell cycle score based on known cell-cycle
+associated genes for S and G2/M phases. These are available through the Seurat
+package.
+
+```{r cc_scoring, message=FALSE, warning=FALSE}
+# A list of cell cycle markers, from Tirosh et al, 2015, is loaded with Seurat.  We can
+# segregate this list into markers of G2/M phase and markers of S phase
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+# Assign cell cycle score to genes, which will be stored in the Seurat object
+# metdata
+merged_data <- Seurat::CellCycleScoring(
+  object = merged_data,
+  s.features = s.genes,
+  g2m.features = g2m.genes,
+  set.ident = TRUE
+)
+
+VlnPlot(
+  object = merged_data, 
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+  ncol = 3, 
+  group.by = "Phase"
+)
+
+VlnPlot(
+  object = merged_data, 
+  features = c('S.Score', 'G2M.Score'), 
+  ncol = 3, 
+  group.by = "group"
+)
+```
+
+We perform the normalization workflow and only regress out the variable 'percent.mt'.
+We perform PCA on the scaled data with and withoutcell cycle regressed genes, however in both cases we regress out the mtDNAexpression. For this PCA we only use the annotated cell cycle genes! It is expected that cells cluster according to cell cycle stage without regression and that
+regressed data shows much less separation according to cell cycle stage (but
+not necessarily zero).
+
+To filter cell cycle genes too set the filter_cell_cycle variable to TRUE.
+
+This document will always show the effect of cell cycle regression by plotting the 
+samples in PCA space with and without filtering, filter_cell_cycle only determines
+which of the two will be used downstream.
+
+```{r normalizeData, message=FALSE, warning=FALSE}
+# Regress out mitochondrial expression and cell cycle stage
+vars.to.regress = c('percent.mt', 'S.Score', 'G2M.Score')
+
+# Decide which normalization workflow to use
+if(sctransform){
+  merged_data <- SCTransform(
+    object = merged_data, 
+    vars.to.regress = vars.to.regress,
+    verbose = FALSE
+  )
+} else {
+  merged_data <- Seurat::NormalizeData(
+    object = merged_data,
+    verbose = FALSE
+  )
+  
+  merged_data <- Seurat::FindVariableFeatures(
+    object = merged_data, 
+    selection.method = 'vst', 
+    nfeatures = 2000
+  )
+  
+  # Scale data without regressing out cell cycle
+  merged_data_cc <- Seurat::ScaleData(
+    object = merged_data,
+    vars.to.regress = 'percent.mt'
+  )
+  
+  # Regress out cell cycle
+  merged_data_no_cc <- Seurat::ScaleData(
+    object = merged_data,
+    vars.to.regress = vars.to.regress
+  )
+  
+  # Decide to use data with/without cell cycle regression
+  if(filter_cell_cycle){
+    merged_data <- merged_data_no_cc
+  } else {
+    merged_data <- merged_data_cc
+  }
+  
+  # Perform PCA on cc regressed samples
+  merged_data_cc <- Seurat::RunPCA(
+    object = merged_data_cc,
+    features = c(s.genes, g2m.genes)
+  )
+  
+  before_cc_correction <- Seurat::DimPlot(merged_data_cc)
+  
+  merged_data_no_cc <- Seurat::RunPCA(
+    object = merged_data_no_cc,
+    features = c(s.genes, g2m.genes)
+  )
+  
+  after_cc_correction <- Seurat::DimPlot(merged_data_no_cc)
+}
+```
+
+#### With cell cycle
+```{r, echo=FALSE, message=FALSE}
+before_cc_correction
+```
+
+#### Cell cycle regressed
+```{r, echo=FALSE, message=FALSE}
+after_cc_correction
+```
+
+## Identification of highly variable features (feature selection)
+
+Even after removing features found in only a few cells and removing artefacts
+the data set may be very large with > 15,000 features. Thus, only genes highly 
+variable across the data set are used for downstream analysis. According to
+Luecken and Theis typical cut-offs are between 1000 and 5000 genes. Although
+downstream analysis is robust as to the the number of genes chosen, they recommend
+to use larger values. We used 2000 genes, the default in the Seurat package.
+
+```{r diff_exp, fig.width=8, fig.height=8, message=FALSE}
+# Identify the 10 most highly variable genes
+top30 <- head(x = VariableFeatures(object = merged_data), 30)
+
+# plot variable features with and without labels
+plot1 <- Seurat::VariableFeaturePlot(object = merged_data)
+Seurat::LabelPoints(plot = plot1, points = top30, repel = TRUE)
+```
+
+## Dimensionality reduction & clustering
+
+Despite containing many cells and features scRNA-seq data is inherently low-dimensional,
+i.e. most biological variation in scRNA-seq data can be shown in few dimensions.
+
+Dimensionality reduction techniques generate reduced representations through
+linear or non-linear combination of gene expression vectors. Non-linear methods
+like [tSNE](http://www.jmlr.org/papers/v9/vandermaaten08a.html) and
+[UMAP](https://www.nature.com/articles/nbt.4314) result in better cell 
+visualisations because they capture local similaity in high-dimensional data 
+better than linear methods such as PCA. However, non-linear reduced dimensions 
+are not straight-forward to interpret, wheras principal components and their 
+associated gene loadings can be interpreted easily.
+
+Dimensionality reduction techniques should be interpreted separatly: PCA or 
+diffusion maps for general purpose summarization and trajectory inference, 
+UMAP for exploratory visualization and UMAP with PAGA for complex data sets.
+
+### Principal component analysis {.tabset}
+
+We first apply PCA to the merged data set and print the top five features (loadings) for
+each of the first five principal components, both in positive and negative direction.
+
+We visualise the PCA in two dimensions and colour cells by sample ID. The elbow plot showws the
+PCs ranked by variance contribution, allowing us to determine a reduced dimensionality
+for downstream processing. Typically we want to choose the number of PC around
+a "hinge" in the elbow plot. Alternatively a statistical procedure called Jackstraw,
+implemented in Seurat, can be used to determine the significance of PCs using
+resampling. 
+
+We also plot the top positive and negative loadings for the first six dimensions
+in a heatmap.
+
+```{r dimReduction1, message=FALSE} 
+merged_data <- Seurat::RunPCA(
+  object = merged_data,
+  verbose = FALSE
+)
+
+elbow_plot <- ElbowPlot(
+  object = merged_data
+)
+
+print(x = merged_data[['pca']], dims = 1:5, nfeatures = 5)
+
+merged_data <- Seurat::JackStraw(
+  object = merged_data,
+  num.replicate = 100
+)
+
+merged_data <- Seurat::ScoreJackStraw(
+  object = merged_data,
+  dims = 1:15
+)
+
+jackstraw_plot <- Seurat::JackStrawPlot(
+  object = merged_data,
+  dims = 1:15
+)
+
+pca_dim_plot <- Seurat::DimPlot(
+  object = merged_data,
+  reduction = 'pca', 
+  group.by = 'group'
+)
+
+pca_dim_loadings <- Seurat::VizDimLoadings(
+  object = merged_data,
+  dims = 1:2, 
+  reduction = 'pca',
+  combine = TRUE
+)
+
+pca_dim_heatmap <- Seurat::DimHeatmap(
+  object = merged_data,
+  dims = 1:6,
+  cells = 500,
+  balanced = TRUE,
+  fast = FALSE
+)
+```
+
+#### PCA
+```{r, echo=FALSE, message=FALSE}
+pca_dim_plot
+```
+
+#### Loadings
+```{r, echo=FALSE, message=FALSE}
+pca_dim_loadings
+```
+
+#### Heatmap
+```{r, echo=FALSE, message=FALSE}
+pca_dim_heatmap
+```
+
+#### Jackstraw
+```{r, echo=FALSE, message=FALSE}
+jackstraw_plot
+```
+
+#### Elbow
+```{r, echo=FALSE, message=FALSE}
+elbow_plot
+```
+
+### Neighbour embedding and clustering
+
+As in PhenoGraph, we first construct a k-nearest neighbour (KNN) graph based on 
+the euclidean distance in PCA space, and refine the edge weights between any two 
+cells based on the shared overlap in their local neighborhoods (Jaccard similarity). 
+This step is performed using the FindNeighbors function, and takes as input the 
+previously defined dimensionality of the dataset (first 15 PCs).
+
+To cluster the cells, we next apply modularity optimization techniques such as the 
+Louvain or Leiden algorithms, to iteratively group cells together, with the goal of 
+optimizing the standard modularity function. The FindClusters function implements this 
+procedure, and contains a resolution parameter that sets the ‘granularity’ of the 
+downstream clustering, with increased values leading to a greater number of clusters. 
+We find that setting this parameter between 0.4-1.2 typically returns good results 
+for single-cell datasets of around 3K cells. Optimal resolution often increases for 
+larger datasets. The clusters can be found using the Idents function. A relatively
+easy explanation of the Louvain and Leiden algorithms is bublished [here](https://www.nature.com/articles/s41598-019-41695-z).
+
+```{r embedding_and_clustering, message=FALSE, warning=FALSE}
+# Constructs a Shared Nearest Neighbor (SNN) Graph for a given dataset. We first 
+# determine the k-nearest neighbors of each cell. We use this knn graph to construct the
+# SNN graph by calculating the neighborhood overlap (Jaccard index) between every cell 
+# and its k.param nearest neighbors.
+merged_data <- FindNeighbors(
+  object = merged_data,
+  k.param = 20,
+  dims = 1:15
+)
+
+# Find clusters by optimizing modularity of a shared nearest neigbour graph using
+# community detection
+# algorithm = 2 (Louvain)
+# algorithm = 4 (Leiden)
+# default resolution is 0.8; use a value above (below) 1.0 if you want to obtain a larger (smaller) number of communities
+merged_data <- FindClusters(
+  object = merged_data,
+  algorithm = 4,
+  resolution = 1.2
+)
+
+merged_data <- RunUMAP(
+  object = merged_data, 
+  dims = 1:15
+)
+```
+
+```{r, echo=FALSE, message=FALSE}
+dat <- merged_data@meta.data
+
+ggplot(dat, aes(x= Phase,  group=group)) + 
+    geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") +
+    geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="group") +
+    facet_grid(~group) +
+    scale_y_continuous(
+      labels = scales::percent
+      ) +
+  theme_bw()
+```
+
+
+### Visualising low-dimensional representations {.tabset}
+
+```{r plots2, echo=FALSE, fig.width=6, fig.height=4}
+umap1 <- Seurat::DimPlot(
+  object = merged_data,
+  reduction = 'umap',
+  group.by = 'group'
+) + theme(
+  axis.text.x=element_blank(),
+  axis.text.y=element_blank(),
+  axis.ticks.x=element_blank(),
+  axis.ticks.y=element_blank(),
+  legend.position = 'right'
+) + scale_color_brewer(palette = "Dark2")
+  
+#scale_color_manual(values = c("#ff8668","gray70", "#5e8aab", "#ffce8e"))
+
+umap2 <- Seurat::DimPlot(
+  object = merged_data,
+  reduction = 'umap',
+  group.by = 'seurat_clusters',
+  label = TRUE
+) + theme(
+  axis.text.x=element_blank(),
+  axis.text.y=element_blank(),
+  axis.ticks.x=element_blank(),
+  axis.ticks.y=element_blank(),
+  legend.position = 'none'
+)
+
+umap3 <- Seurat::DimPlot(
+  object = merged_data,
+  reduction = 'umap',
+  group.by = 'Phase'
+) + theme(
+  axis.text.x=element_blank(),
+  axis.text.y=element_blank(),
+  axis.ticks.x=element_blank(),
+  axis.ticks.y=element_blank(),
+  legend.position = 'bottom'
+)
+
+
+save(merged_data, file = "seurat_object.Rdata")
+```
+
+#### Samples
+```{r, echo=FALSE, message=FALSE}
+umap1
+```
+
+#### Clusters
+```{r, echo=FALSE, message=FALSE}
+umap2
+```
+
+#### Cell cycle
+```{r, echo=FALSE, message=FALSE}
+umap3
+```
+
+#### Combined
+```{r, echo=FALSE, message=FALSE}
+#plot_grid(umap1,umap2,umap3)
+
+umap1 | (umap2 / umap3)
+```
