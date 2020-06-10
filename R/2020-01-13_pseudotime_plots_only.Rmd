@@ -1,0 +1,156 @@
+---
+title: "Single-cell RNA seq  trajctories and pseudotime plots"
+author: "Stefan Filges"
+date: '`r format(Sys.Date())`'
+output: 
+  html_document:
+    theme: sandstone
+    highlight: tango
+    code_folding: hide
+    toc: true
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_libraries}
+suppressMessages(library(Seurat))
+suppressMessages(library(monocle))
+suppressMessages(library(viridis))
+suppressMessages(library(tidyverse))
+```
+
+# What does this document do?
+
+This document uses pre-generated single cell data objects containing pseudotime/trajctory information and generates plots for data exploration and analysis. The data sets were generated using a different script, which can take a significant amount of time and is a long document containing code on many other issues. This document allows for faster and easier-to-use analysis.
+
+# Monocle 2
+
+## Load data
+
+First we load a CellDataSet called cds generated with Monocle v2. This contains the expression data, cell metdata (phenotypes) as well as pseudotime values.
+
+```{r import_data}
+load("cds_monocle2.Rdata")
+
+clustering_DEG_genes = read.csv2("monocle2_DEG_genes.csv")
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r monocle_v2_pseudotime, echo=FALSE}
+plot1 <- monocle::plot_cell_trajectory(
+  cds = cds,
+  color_by = "Pseudotime"
+) + scale_color_viridis_c()
+
+plot2 <- monocle::plot_cell_trajectory(
+  cds = cds, 
+  color_by = "stim"
+) + scale_color_manual(values = c("#ff8668","gray70", "#5e8aab", "#ffce8e"))
+
+Seurat::CombinePlots(plots = list(plot1,plot2))
+```
+
+```{r monocle2-heatmap, eval=TRUE, message=FALSE}
+to_be_tested <- rownames(clustering_DEG_genes)[order(clustering_DEG_genes$qval)][1:100]
+
+cds_subset <- cds[as.numeric(to_be_tested),]
+
+diff_test_res <- monocle::differentialGeneTest(
+  cds_subset,
+  fullModelFormulaStr = "~sm.ns(Pseudotime)"
+)
+
+sig_gene_names <- row.names(subset(diff_test_res, qval < 0.01))
+
+monocle::plot_pseudotime_heatmap(
+  cds_subset[sig_gene_names,],
+  num_clusters = 4,
+  cores = 4,
+  cluster_rows = TRUE,
+  norm_method = 'vstExprs',
+  show_rownames = TRUE,
+  hmcols = viridis::magma(256)
+) + scale_color_viridis_d()
+```
+
+```{r}
+col_vec <- cds_subset$orig.ident %>% 
+  dplyr::recode(xFD = "#00BFC4", FD = "#F8766D", WT = "#7CAE00", xWT = "#C77CFF")
+
+# red: scf FD - #F8766D
+# grün: scf WT - #7CAE00
+# cyan: xen FD - #00BFC4
+# violett: xen WT - #C77CFF
+
+hmap_2 <- gplots::heatmap.2(
+  x = as.matrix(cds_subset[sig_gene_names,]@assayData$exprs),
+  labCol = FALSE, 
+  dendrogram = "both",
+  trace = "none",
+  ColSideColors = as.character(col_vec),
+  col = viridis::magma(256),
+  key = TRUE
+) 
+
+```
+
+```{r}
+cds_time <- cds_subset[,order(cds_subset$Pseudotime)]
+
+annotation = list(
+  time = cds_time$Pseudotime,
+  stim = cds_time$stim
+)
+annotation_colors = list(
+  time = viridis::viridis(256),
+  stim = c("#ff8668","gray70", "#5e8aab", "#ffce8e")
+)
+
+fig1 <- NMF::aheatmap(
+  x = as.matrix(exprs(cds_time[sig_gene_names,])),
+  Colv = NA, Rowv = NA, border_color = NA,
+  annCol = annotation,
+  annColors = annotation_colors, 
+  scale = 'none', filename = "aheatmap.svg"
+)
+```
+
+## Plot differentially expressed genes in pseudotime
+
+```{r}
+diff_test_res <- diff_test_res[diff_test_res$qval < 0.01,]
+diff_test_res <- diff_test_res[order(diff_test_res$qval),]
+
+my_genes <- row.names(subset(fData(cds), gene_short_name %in% head(diff_test_res$gene_short_name,3))) 
+cds_subset <- cds[my_genes,]
+
+print(head(diff_test_res[,c("gene_short_name", "pval", "qval")]))
+```
+
+```{r}
+# Plot by pseudotime
+plot1 <- monocle::plot_genes_in_pseudotime(
+  cds_subset = cds_subset,
+  color_by = "Pseudotime",
+  cell_size = 0.5
+) + scale_color_viridis_c()
+
+# Plot by sample
+plot2 <- monocle::plot_genes_in_pseudotime(
+  cds_subset = cds_subset,
+  color_by = "stim",
+  cell_size = 0.5
+) + scale_color_manual(values = c("#ff8668","gray70", "#5e8aab", "#ffce8e"))
+
+Seurat::CombinePlots(plots = list(plot1,plot2))
+```
+
+
+
+
