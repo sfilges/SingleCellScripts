@@ -18,24 +18,6 @@ The R folder contains the following scripts:
 The analysis depends on the following R packges. Analysing networks with Cytoscape also requires an installation of the cytoscape software as well the "StringApp" which can be installed using the cytoscape app manager.
 
 ```{r packages, message=FALSE, warning=FALSE}
-# run sctransform, this replaces the NormalizeData, ScaleData and FindVariableFeatures
-sctransform = FALSE
-
-# Should cell cycle filtering be applied or not?
-filter_cell_cycle = FALSE
-
-# define the working directory
-working_directory <- "~/GitHub/SingleCellScripts/10x/"
-setwd(working_directory)
-print(getwd())
-
-# define output file
-seurat_object_final <- "~/GitHub/SingleCellScripts/data/Rdata/seurat_object_final.Rdata"
-
-# load object
-seurat_object_save <- "~/GitHub/SingleCellScripts/data/Rdata/seurat_object_preprocessed.Rdata"
-load(seurat_object_save)
-
 # Packages for main analysis, clustering, data structures etc.
 library(Seurat, quietly = TRUE))
 library(mclust, quietly = TRUE))
