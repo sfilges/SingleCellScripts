@@ -467,15 +467,15 @@ enrichment_plot(data = t, cluster = 1)
 dev.off()
   
 pdf(file = paste("enrichment_cluster_2",".pdf", sep=""),width = 12,height = 6)
-enrichment_plot(2)
+enrichment_plot(data = t, cluster = 2)
 dev.off()
   
 pdf(file = paste("enrichment_cluster_3",".pdf", sep=""),width = 12,height = 6)
-enrichment_plot(3)
+enrichment_plot(data = t, cluster = 3)
 dev.off()
   
 pdf(file = paste("enrichment_cluster_4",".pdf", sep=""),width = 12,height = 6)
-enrichment_plot(4)
+enrichment_plot(data = t, cluster = 4)
 dev.off()
 ```
 
