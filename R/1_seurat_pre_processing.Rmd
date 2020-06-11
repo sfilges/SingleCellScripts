@@ -226,9 +226,9 @@ plot1 + plot2
 # Visualize QC metrics as a violin plot
 VlnPlot(
   object = merged_data, 
-  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+  features = c('nFeature_RNA', 'nCount_RNA', 'percent.mt'), 
   ncol = 3, 
-  group.by = "group"
+  group.by = 'group'
 )
 ```
 
@@ -251,16 +251,16 @@ merged_data <- Seurat::CellCycleScoring(
 
 VlnPlot(
   object = merged_data, 
-  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+  features = c('nFeature_RNA', 'nCount_RNA', 'percent.mt'), 
   ncol = 3, 
-  group.by = "Phase"
+  group.by = 'Phase'
 )
 
 VlnPlot(
   object = merged_data, 
   features = c('S.Score', 'G2M.Score'), 
   ncol = 3, 
-  group.by = "group"
+  group.by = 'group'
 )
 ```
 
@@ -361,22 +361,4 @@ after_cc_correction
 ```{r}
 save(merged_data, file = seurat_object_save)
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
