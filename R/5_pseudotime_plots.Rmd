@@ -424,13 +424,23 @@ body(enricher)<-body(enricher_edit)
 
 environment(enricher_custom)<-environment(clusterProfiler:::enricher_internal)
 
-enrichment_plot <- function(data, cluster){
-  gene <- data %>% dplyr::filter(cluster == cluster)
+enrichment_plot <- function(data, id){
   
-  kegg <- read.gmt("~/GitHub/SingleCellScripts/data/MSigDB/c2.cp.kegg.v7.1.symbols.gmt")
-  cgp <- read.gmt("~/GitHub/SingleCellScripts/data/MSigDB/c2.cgp.v7.1.symbols.gmt")
+  gene <- data %>% dplyr::filter(cluster == id)
   
-  hgnc_symbols <- read.csv("~/GitHub/SingleCellScripts/data/MSigDB/hgnc.txt", sep = '\t', header=TRUE)
+  kegg <- read.gmt(
+    gmtfile = "~/GitHub/SingleCellScripts/data/MSigDB/c2.cp.kegg.v7.1.symbols.gmt"
+  )
+  cgp <- read.gmt(
+    gmtfile = "~/GitHub/SingleCellScripts/data/MSigDB/c2.cgp.v7.1.symbols.gmt"
+  )
+  
+  hgnc_symbols <- read.csv(
+    file = "~/GitHub/SingleCellScripts/data/MSigDB/hgnc.txt",
+    sep = '\t',
+    header=TRUE
+  )
+  
   hgnc_symbols <- hgnc_symbols$Approved.symbol
 
   egmt <- enricher(
@@ -457,8 +467,7 @@ enrichment_plot <- function(data, cluster){
   )
   kegg_dotplot <- custom_dotplot(egmt, x.axis = "qvalue")
   
-  plot <- cgp_dotplot + kegg_dotplot
-  return(plot)
+  return((cgp_dotplot + kegg_dotplot))
 }
 
 
