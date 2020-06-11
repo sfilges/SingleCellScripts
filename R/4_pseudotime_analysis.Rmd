@@ -18,25 +18,10 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r load_libraries}
 # Packages for main analysis, clustering, data structures etc.
 suppressMessages(library(Seurat, quietly = TRUE))
-suppressMessages(library(mclust, quietly = TRUE))
-suppressMessages(library(biomaRt, quietly = TRUE))
-suppressMessages(library(msigdbr, quietly = TRUE))
-suppressMessages(library(clusterProfiler, quietly = TRUE))
-suppressMessages(library(destiny, quietly = TRUE))
 suppressMessages(library(SummarizedExperiment, quietly = TRUE))
-suppressMessages(require(clusterExperiment, quietly = TRUE))
-suppressMessages(library(MAST, quietly = TRUE))
-suppressMessages(library(DESeq2, quietly = TRUE))
-suppressMessages(library(sctransform, quietly = TRUE))
-
-# Packages for data handeling and plotting
-suppressMessages(library(reshape, quietly = TRUE))
-suppressMessages(library(cowplot, quietly = TRUE))
 suppressMessages(library(tidyverse, quietly = TRUE))
 suppressMessages(library(viridis, quietly = TRUE))
 suppressMessages(library(RColorBrewer, quietly = TRUE))
-suppressMessages(library(VennDiagram, quietly = TRUE))
-suppressMessages(library(DT, quietly = TRUE))
 
 # Packages for pseudotime ordering
 suppressMessages(library(slingshot, quietly = TRUE))
@@ -127,8 +112,10 @@ col = brewer.pal(9,'Set1')[sce$sample]
 colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
 plotcol <- colors[cut(sce$slingPseudotime_1, breaks=100)]
 
+pdf(file = '~/GitHub/SingleCellScripts/figures/slingshot_trajectory.pdf', width = 9, height = 6)
 plot(reducedDims(sce)$UMAP, col = plotcol, pch=16, asp = 1, frame.plot=TRUE)
 lines(SlingshotDataSet(sce), lwd = 3, col = 'black')
+dev.off()
 ```
 
 ## SCORPIUS
@@ -146,13 +133,14 @@ space <- reduce_dimensionality(
 
 trajectory <- infer_trajectory(space)
 
-
+pdf(file = '~/GitHub/SingleCellScripts/figures/scorpius_trajectory.pdf', width = 9, height = 6)
 draw_trajectory_plot(
   space = space, 
   progression_group = groups$merged_data,
   contour = TRUE,
   path = trajectory$path
 )
+dev.off()
 ```
 
 ## Pseudotime with Monocole 2 DDRTree

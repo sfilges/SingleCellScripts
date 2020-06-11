@@ -81,6 +81,14 @@ plot2 <- monocle::plot_cell_trajectory(
   values = c('#ff8668', 'gray70', '#5e8aab', '#ffce8e')
   )
 
+# Save monocle pseudotime
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_pseudotime.svg', plot = plot1, width = 9, height = 6, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_pseudotime.pdf', plot = plot1, width = 9, height = 6, device = "pdf")
+
+# Save moncole samples
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_samples.svg', plot = plot2, width = 9, height = 6, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_samples.pdf', plot = plot2, width = 9, height = 6, device = "pdf")
+
 plot1 + plot2
 ```
 
@@ -169,7 +177,7 @@ NMF::aheatmap(
   scale = 'none',
   width = 5,
   height = 5,
-  filename = "~/GitHub/SingleCellScripts/figures/aheatmap_500_genes.pdf"
+  filename = "~/GitHub/SingleCellScripts/figures/aheatmap_1500_genes.pdf"
 )
 ```
 
@@ -469,21 +477,27 @@ enrichment_plot <- function(data, id){
 }
 
 
-pdf(file = paste("enrichment_cluster_1",".pdf", sep=""),width = 12,height = 6)
-enrichment_plot(data = t, cluster = 1)
-dev.off()
-  
-pdf(file = paste("enrichment_cluster_2",".pdf", sep=""),width = 12,height = 6)
-enrichment_plot(data = t, cluster = 2)
-dev.off()
-  
-pdf(file = paste("enrichment_cluster_3",".pdf", sep=""),width = 12,height = 6)
-enrichment_plot(data = t, cluster = 3)
-dev.off()
-  
-pdf(file = paste("enrichment_cluster_4",".pdf", sep=""),width = 12,height = 6)
-enrichment_plot(data = t, cluster = 4)
-dev.off()
+cluster_1 <- enrichment_plot(data = t, id = 1)
+cluster_2 <- enrichment_plot(data = t, id = 2)
+cluster_3 <- enrichment_plot(data = t, id = 3)
+cluster_4 <- enrichment_plot(data = t, id = 4)
+
+# Save cluster1 enrichments
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_1.svg', plot = cluster_1, width = 9, height = 6, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_1.pdf', plot = cluster_1, width = 9, height = 6, device = "pdf")
+
+# Save cluster1 enrichments
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_2.svg', plot = cluster_2, width = 9, height = 6, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_2.pdf', plot = cluster_2, width = 9, height = 6, device = "pdf")
+
+# Save cluster1 enrichments
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_3.svg', plot = cluster_3, width = 9, height = 6, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_3.pdf', plot = cluster_3, width = 9, height = 6, device = "pdf")
+
+# Save cluster1 enrichments
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_4.svg', plot = cluster_4, width = 9, height = 6, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_4.pdf', plot = cluster_4, width = 9, height = 6, device = "pdf")
+
 ```
 
 

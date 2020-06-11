@@ -290,6 +290,17 @@ umap3 <- Seurat::DimPlot(
   legend.position = 'bottom'
 )
 
+# Save umap1
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/umap_samples.svg', plot = umap1, width = 9, height = 6, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/umap_samples.pdf', plot = umap1, width = 9, height = 6, device = "pdf")
+
+# Save umap2
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/umap_clusters.svg', plot = umap2, width = 9, height = 6, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/umap_clusters.pdf', plot = umap2, width = 9, height = 6, device = "pdf")
+
+# Save umap3
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/umap_cell_cycle.svg', plot = umap3, width = 9, height = 6, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/umap_cell_cycle.pdf', plot = umap3, width = 9, height = 6, device = "pdf")
 
 save(merged_data, file = seurat_object_final)
 ```
