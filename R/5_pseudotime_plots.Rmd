@@ -78,12 +78,12 @@ plot2 <- monocle::plot_cell_trajectory(
   )
 
 # Save monocle pseudotime
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_pseudotime.svg', plot = plot1, width = 9, height = 6, device = "svg")
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_pseudotime.pdf', plot = plot1, width = 9, height = 6, device = "pdf")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_pseudotime.svg', plot = plot1, width = 9, height = 9, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_pseudotime.pdf', plot = plot1, width = 9, height = 9, device = "pdf")
 
 # Save moncole samples
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_samples.svg', plot = plot2, width = 9, height = 6, device = "svg")
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_samples.pdf', plot = plot2, width = 9, height = 6, device = "pdf")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_samples.svg', plot = plot2, width = 9, height = 9, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_samples.pdf', plot = plot2, width = 9, height = 9, device = "pdf")
 
 plot1 + plot2
 ```
@@ -479,20 +479,20 @@ cluster_3 <- enrichment_plot(data = t, id = 3)
 cluster_4 <- enrichment_plot(data = t, id = 4)
 
 # Save cluster1 enrichments
-ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_1.svg', sep = ''), plot = cluster_1, width = 12, height = 6, device = "svg")
-ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_1.pdf', sep = ''), plot = cluster_1, width = 12, height = 6, device = "pdf")
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_1.svg', sep = ''), plot = cluster_1, width = 12, height = 4, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_1.pdf', sep = ''), plot = cluster_1, width = 12, height = 4, device = "pdf")
 
 # Save cluster2 enrichments
-ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_2.svg', sep = ''), plot = cluster_2, width = 12, height = 6, device = "svg")
-ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_2.pdf', sep = ''), plot = cluster_2, width = 12, height = 6, device = "pdf")
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_2.svg', sep = ''), plot = cluster_2, width = 12, height = 4, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_2.pdf', sep = ''), plot = cluster_2, width = 12, height = 4, device = "pdf")
 
 # Save cluster3 enrichments
-ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_3.svg', sep = ''), plot = cluster_3, width = 12, height = 6, device = "svg")
-ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_3.pdf', sep = ''), plot = cluster_3, width = 12, height = 6, device = "pdf")
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_3.svg', sep = ''), plot = cluster_3, width = 12, height = 4, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_3.pdf', sep = ''), plot = cluster_3, width = 12, height = 4, device = "pdf")
 
 # Save cluster4 enrichments
-ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_4.svg', sep = ''), plot = cluster_4, width = 12, height = 6, device = "svg")
-ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_4.pdf', sep = ''), plot = cluster_4, width = 12, height = 6, device = "pdf")
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_4.svg', sep = ''), plot = cluster_4, width = 12, height = 4, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_4.pdf', sep = ''), plot = cluster_4, width = 12, height = 4, device = "pdf")
 
 ```
 

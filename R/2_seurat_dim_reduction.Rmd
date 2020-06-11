@@ -250,10 +250,8 @@ umap1 <- Seurat::DimPlot(
   axis.text.y=element_blank(),
   axis.ticks.x=element_blank(),
   axis.ticks.y=element_blank(),
-  legend.position = 'right'
-) + scale_color_brewer(palette = 'Dark2')
-  
-#scale_color_manual(values = c("#ff8668","gray70", "#5e8aab", "#ffce8e"))
+  legend.position = 'bottom'
+) + scale_color_manual(values = c("#ff8668","gray70", "#5e8aab", "#ffce8e"))
 
 umap2 <- Seurat::DimPlot(
   object = merged_data,
@@ -281,16 +279,16 @@ umap3 <- Seurat::DimPlot(
 )
 
 # Save umap1
-ggplot2::ggsave(filename = paste(figures_dir, 'umap_samples.svg', sep = ''), plot = umap1, width = 9, height = 6, device = "svg")
-ggplot2::ggsave(filename = paste(figures_dir, 'umap_samples.pdf', sep = ''), plot = umap1, width = 9, height = 6, device = "pdf")
+ggplot2::ggsave(filename = paste(figures_dir, 'umap_samples.svg', sep = ''), plot = umap1, width = 9, height = 9, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'umap_samples.pdf', sep = ''), plot = umap1, width = 9, height = 9, device = "pdf")
 
 # Save umap2
-ggplot2::ggsave(filename = paste(figures_dir, 'umap_clusters.svg', sep = ''), plot = umap2, width = 9, height = 6, device = "svg")
-ggplot2::ggsave(filename = paste(figures_dir, 'umap_clusters.pdf', sep = ''), plot = umap2, width = 9, height = 6, device = "pdf")
+ggplot2::ggsave(filename = paste(figures_dir, 'umap_clusters.svg', sep = ''), plot = umap2, width = 9, height = 9, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'umap_clusters.pdf', sep = ''), plot = umap2, width = 9, height = 9, device = "pdf")
 
 # Save umap3
-ggplot2::ggsave(filename = paste(figures_dir, 'umap_cell_cycle.svg', sep = ''), plot = umap3, width = 9, height = 6, device = "svg")
-ggplot2::ggsave(filename = paste(figures_dir, 'umap_cell_cycle.pdf', sep = ''), plot = umap3, width = 9, height = 6, device = "pdf")
+ggplot2::ggsave(filename = paste(figures_dir, 'umap_cell_cycle.svg', sep = ''), plot = umap3, width = 9, height = 9, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'umap_cell_cycle.pdf', sep = ''), plot = umap3, width = 9, height = 9, device = "pdf")
 
 save(merged_data, file = seurat_object_final)
 ```
