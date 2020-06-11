@@ -63,18 +63,31 @@ The user must supply a working directory to use for importing data and generatin
 outputs.
 
 ```{r packages, message=FALSE, warning=FALSE}
+#----------------------- // USER defined variables //---------------------------
+# define the working directory
+working_directory <- "~/GitHub/SingleCellScripts/"
+
 # run sctransform, this replaces the NormalizeData, ScaleData and FindVariableFeatures
 sctransform = FALSE
 
 # Should cell cycle filtering be applied or not?
 filter_cell_cycle = FALSE
+#--------------------------------------------------------------------------------------
 
-# define the working directory
-data_directory <- "~/GitHub/SingleCellScripts/10x/"
+# set other directories based on working directory
+matrix_dir <- paste(working_directory,"data/count_matrices/",sep="")
+rdata_dir <- paste(working_directory,"data/Rdata/",sep="")
 
-# define output file
-seurat_object_save <- "~/GitHub/SingleCellScripts/data/Rdata/seurat_object_preprocessed.Rdata"
+# Check if directory for Rdata files exists, if not create it
+ifelse(
+  !dir.exists(rdata_dir), 
+  dir.create(file.path(rdata_dir)), FALSE
+)
 
+# Store seurat object for quick re-use
+seurat_object_save <- paste(rdata_dir,"seurat_object_preprocessed.Rdata",sep = "")
+
+# Load packages
 suppressMessages(library(tidyverse, quietly = TRUE))
 suppressMessages(library(Seurat, quietly = TRUE))
 ```
@@ -84,23 +97,23 @@ suppressMessages(library(Seurat, quietly = TRUE))
 ```{r loadObjects, message=FALSE, warning=FALSE}
 #---------------- scaffold cultures -------------------
 # Analyze FUS-DDIT3 samples
-fd_scf <- Read10X(paste(data_directory,"/HT1080_Scf_FD/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
+fd_scf <- Read10X(paste(matrix_dir,"HT1080_Scf_FD/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
 fd_scf <- CreateSeuratObject(fd_scf,project = "scf_FD", min.cells = 5)
 fd_scf$group <- "scf-FD"
 
 # Analyze WT samples
-wt_scf <- Read10X(paste(data_directory,"HT1080_Scf_WT/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
+wt_scf <- Read10X(paste(matrix_dir,"HT1080_Scf_WT/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
 wt_scf <- CreateSeuratObject(wt_scf,project = "scf_WT", min.cells = 5)
 wt_scf$group <- "scf-WT"
 
 #---------------- xenograft cultures -------------------
 # Analyze WT samples
-wt_xen <- Read10X(paste(data_directory,"HT1080_Xen_WT/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
+wt_xen <- Read10X(paste(matrix_dir,"HT1080_Xen_WT/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
 wt_xen <- CreateSeuratObject(wt_xen,project = "xen_WT", min.cells = 5)
 wt_xen$group <- "xenograft-WT"
 
 # Analyze FUS-DDIT3 samples
-fd_xen <- Read10X(paste(data_directory,"HT1080_Xen_FD/HT1080_FD_mouse_custom_hg38/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
+fd_xen <- Read10X(paste(matrix_dir,"HT1080_Xen_FD/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
 fd_xen <- CreateSeuratObject(fd_xen,project = "xen_FD", min.cells = 5)
 fd_xen$group <- "xenograft-FD"
 ```

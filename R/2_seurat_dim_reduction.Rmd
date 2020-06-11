@@ -19,45 +19,35 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```{r packages, message=FALSE, warning=FALSE}
+#----------------------- // USER defined variables //---------------------------
+# define the working directory
+working_directory <- "~/GitHub/SingleCellScripts/"
+
 # run sctransform, this replaces the NormalizeData, ScaleData and FindVariableFeatures
 sctransform = FALSE
 
 # Should cell cycle filtering be applied or not?
 filter_cell_cycle = FALSE
+#--------------------------------------------------------------------------------------
 
-# define the working directory
-working_directory <- "~/GitHub/SingleCellScripts/10x/"
-setwd(working_directory)
-print(getwd())
+# set other directories based on working directory
+figures_dir <- paste(working_directory,"figures/",sep="")
+rdata_dir <- paste(working_directory,"data/Rdata/",sep="")
 
-# define output file
-seurat_object_final <- "~/GitHub/SingleCellScripts/data/Rdata/seurat_object_final.Rdata"
+# define output file to save Seurat object for re-use
+seurat_object_final <- paste(rdata_dir,"seurat_object_final.Rdata",sep="")
 
-# load object
-seurat_object_save <- "~/GitHub/SingleCellScripts/data/Rdata/seurat_object_preprocessed.Rdata"
+# load preprocessed object
+seurat_object_save <- paste(rdata_dir,"seurat_object_preprocessed.Rdata",sep="")
 load(seurat_object_save)
 
 # Packages for main analysis, clustering, data structures etc.
 suppressMessages(library(Seurat, quietly = TRUE))
-suppressMessages(library(mclust, quietly = TRUE))
-suppressMessages(library(biomaRt, quietly = TRUE))
-suppressMessages(library(msigdbr, quietly = TRUE))
-suppressMessages(library(clusterProfiler, quietly = TRUE))
-suppressMessages(library(destiny, quietly = TRUE))
 suppressMessages(library(SummarizedExperiment, quietly = TRUE))
-suppressMessages(require(clusterExperiment, quietly = TRUE))
-suppressMessages(library(MAST, quietly = TRUE))
-suppressMessages(library(DESeq2, quietly = TRUE))
 suppressMessages(library(sctransform, quietly = TRUE))
-
-# Packages for data handeling and plotting
-suppressMessages(library(reshape, quietly = TRUE))
-suppressMessages(library(cowplot, quietly = TRUE))
 suppressMessages(library(tidyverse, quietly = TRUE))
 suppressMessages(library(viridis, quietly = TRUE))
 suppressMessages(library(RColorBrewer, quietly = TRUE))
-suppressMessages(library(VennDiagram, quietly = TRUE))
-suppressMessages(library(DT, quietly = TRUE))
 ```
 
 
@@ -72,7 +62,7 @@ to use larger values. We used 2000 genes, the default in the Seurat package.
 
 ```{r diff_exp, fig.width=8, fig.height=8, message=FALSE}
 # Identify the 10 most highly variable genes
-top30 <- head(x = VariableFeatures(object = merged_data), 30)
+top30 <- head(x = Seurat::VariableFeatures(object = merged_data), 30)
 
 # plot variable features with and without labels
 plot1 <- Seurat::VariableFeaturePlot(object = merged_data)
@@ -118,7 +108,7 @@ merged_data <- Seurat::RunPCA(
   verbose = FALSE
 )
 
-elbow_plot <- ElbowPlot(
+elbow_plot <- Seurat::ElbowPlot(
   object = merged_data
 )
 
@@ -209,7 +199,7 @@ easy explanation of the Louvain and Leiden algorithms is bublished [here](https:
 # determine the k-nearest neighbors of each cell. We use this knn graph to construct the
 # SNN graph by calculating the neighborhood overlap (Jaccard index) between every cell 
 # and its k.param nearest neighbors.
-merged_data <- FindNeighbors(
+merged_data <- Seurat::FindNeighbors(
   object = merged_data,
   k.param = 20,
   dims = 1:15
@@ -220,13 +210,13 @@ merged_data <- FindNeighbors(
 # algorithm = 2 (Louvain)
 # algorithm = 4 (Leiden)
 # default resolution is 0.8; use a value above (below) 1.0 if you want to obtain a larger (smaller) number of communities
-merged_data <- FindClusters(
+merged_data <- Seurat::FindClusters(
   object = merged_data,
   algorithm = 2,
   resolution = 1.2
 )
 
-merged_data <- RunUMAP(
+merged_data <- Seurat::RunUMAP(
   object = merged_data, 
   dims = 1:15
 )
@@ -291,16 +281,16 @@ umap3 <- Seurat::DimPlot(
 )
 
 # Save umap1
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/umap_samples.svg', plot = umap1, width = 9, height = 6, device = "svg")
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/umap_samples.pdf', plot = umap1, width = 9, height = 6, device = "pdf")
+ggplot2::ggsave(filename = paste(figures_dir, 'umap_samples.svg', sep = ''), plot = umap1, width = 9, height = 6, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'umap_samples.pdf', sep = ''), plot = umap1, width = 9, height = 6, device = "pdf")
 
 # Save umap2
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/umap_clusters.svg', plot = umap2, width = 9, height = 6, device = "svg")
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/umap_clusters.pdf', plot = umap2, width = 9, height = 6, device = "pdf")
+ggplot2::ggsave(filename = paste(figures_dir, 'umap_clusters.svg', sep = ''), plot = umap2, width = 9, height = 6, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'umap_clusters.pdf', sep = ''), plot = umap2, width = 9, height = 6, device = "pdf")
 
 # Save umap3
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/umap_cell_cycle.svg', plot = umap3, width = 9, height = 6, device = "svg")
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/umap_cell_cycle.pdf', plot = umap3, width = 9, height = 6, device = "pdf")
+ggplot2::ggsave(filename = paste(figures_dir, 'umap_cell_cycle.svg', sep = ''), plot = umap3, width = 9, height = 6, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'umap_cell_cycle.pdf', sep = ''), plot = umap3, width = 9, height = 6, device = "pdf")
 
 save(merged_data, file = seurat_object_final)
 ```

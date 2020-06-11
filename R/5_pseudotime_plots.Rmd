@@ -19,25 +19,16 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r load_libraries}
 # Packages for main analysis, clustering, data structures etc.
 suppressMessages(library(Seurat, quietly = TRUE))
-suppressMessages(library(mclust, quietly = TRUE))
 suppressMessages(library(biomaRt, quietly = TRUE))
 suppressMessages(library(msigdbr, quietly = TRUE))
 suppressMessages(library(clusterProfiler, quietly = TRUE))
-suppressMessages(library(destiny, quietly = TRUE))
 suppressMessages(library(SummarizedExperiment, quietly = TRUE))
 suppressMessages(require(clusterExperiment, quietly = TRUE))
-suppressMessages(library(MAST, quietly = TRUE))
-suppressMessages(library(DESeq2, quietly = TRUE))
-suppressMessages(library(sctransform, quietly = TRUE))
 
 # Packages for data handeling and plotting
-suppressMessages(library(reshape, quietly = TRUE))
-suppressMessages(library(cowplot, quietly = TRUE))
 suppressMessages(library(tidyverse, quietly = TRUE))
 suppressMessages(library(viridis, quietly = TRUE))
 suppressMessages(library(RColorBrewer, quietly = TRUE))
-suppressMessages(library(VennDiagram, quietly = TRUE))
-suppressMessages(library(DT, quietly = TRUE))
 
 # Packages for pseudotime ordering
 suppressMessages(library(slingshot, quietly = TRUE))
@@ -56,14 +47,19 @@ This document uses pre-generated single cell data objects containing pseudotime/
 First we load a CellDataSet called cds generated with Monocle v2. This contains the expression data, cell metdata (phenotypes) as well as pseudotime values.
 
 ```{r import_data}
-# load object
-seurat_object_save <- "~/GitHub/SingleCellScripts/data/Rdata/seurat_object_final.Rdata"
-load(seurat_object_save)
-load(file = '~/GitHub/SingleCellScripts/data/Rdata/cds_monocle2.Rdata')
-load(file = '~/GitHub/SingleCellScripts/data/Rdata/seurat_object.Rdata')
+# define the working directory
+working_directory <- "~/GitHub/SingleCellScripts/"
 
-clustering_DEG_genes = read.csv2(file = '~/GitHub/SingleCellScripts/data/gene_lists/monocle2_DEG_genes.csv')
-order_genes <- read.csv2(file = '~/GitHub/SingleCellScripts/data/gene_lists/ordering_genes.csv')
+# set other directories based on working directory
+figures_dir <- paste(working_directory,"figures/",sep="")
+rdata_dir <- paste(working_directory,"data/Rdata/",sep="")
+
+# load object
+load(file = paste(rdata_dir, 'seurat_object_final.Rdata', sep = ''))
+load(file = paste(rdata_dir, 'cds_monocle2.Rdata', sep = ''))
+
+clustering_DEG_genes = read.csv2(file = paste(working_directory, 'data/gene_lists/monocle2_DEG_genes.csv', sep = ''))
+order_genes <- read.csv2(file = paste(working_directory, 'data/gene_lists/ordering_genes.csv', sep = ''))
 ```
 
 ## Cell trajectories
@@ -435,14 +431,14 @@ enrichment_plot <- function(data, id){
   gene <- data %>% dplyr::filter(cluster == id)
   
   kegg <- read.gmt(
-    gmtfile = "~/GitHub/SingleCellScripts/data/MSigDB/c2.cp.kegg.v7.1.symbols.gmt"
+    gmtfile = paste(working_directory, "data/MSigDB/c2.cp.kegg.v7.1.symbols.gmt", sep = "")
   )
   cgp <- read.gmt(
-    gmtfile = "~/GitHub/SingleCellScripts/data/MSigDB/c2.cgp.v7.1.symbols.gmt"
+    gmtfile =  paste(working_directory, "data/MSigDB/c2.cgp.v7.1.symbols.gmt", sep = "")
   )
   
   hgnc_symbols <- read.csv(
-    file = "~/GitHub/SingleCellScripts/data/MSigDB/hgnc.txt",
+    file = paste(working_directory, "data/MSigDB/hgnc.txt", sep = ""),
     sep = '\t',
     header=TRUE
   )
@@ -483,20 +479,20 @@ cluster_3 <- enrichment_plot(data = t, id = 3)
 cluster_4 <- enrichment_plot(data = t, id = 4)
 
 # Save cluster1 enrichments
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_1.svg', plot = cluster_1, width = 9, height = 6, device = "svg")
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_1.pdf', plot = cluster_1, width = 9, height = 6, device = "pdf")
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_1.svg', sep = ''), plot = cluster_1, width = 12, height = 6, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_1.pdf', sep = ''), plot = cluster_1, width = 12, height = 6, device = "pdf")
 
-# Save cluster1 enrichments
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_2.svg', plot = cluster_2, width = 9, height = 6, device = "svg")
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_2.pdf', plot = cluster_2, width = 9, height = 6, device = "pdf")
+# Save cluster2 enrichments
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_2.svg', sep = ''), plot = cluster_2, width = 12, height = 6, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_2.pdf', sep = ''), plot = cluster_2, width = 12, height = 6, device = "pdf")
 
-# Save cluster1 enrichments
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_3.svg', plot = cluster_3, width = 9, height = 6, device = "svg")
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_3.pdf', plot = cluster_3, width = 9, height = 6, device = "pdf")
+# Save cluster3 enrichments
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_3.svg', sep = ''), plot = cluster_3, width = 12, height = 6, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_3.pdf', sep = ''), plot = cluster_3, width = 12, height = 6, device = "pdf")
 
-# Save cluster1 enrichments
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_4.svg', plot = cluster_4, width = 9, height = 6, device = "svg")
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/enrichment_cluster_4.pdf', plot = cluster_4, width = 9, height = 6, device = "pdf")
+# Save cluster4 enrichments
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_4.svg', sep = ''), plot = cluster_4, width = 12, height = 6, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_4.pdf', sep = ''), plot = cluster_4, width = 12, height = 6, device = "pdf")
 
 ```
 

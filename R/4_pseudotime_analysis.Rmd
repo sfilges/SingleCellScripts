@@ -15,6 +15,37 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# What does this document do?
+
+This document uses pre-generated single cell data objects containing pseudotime/trajctory information and generates plots for data exploration and analysis. The data sets were generated using a different script, which can take a significant amount of time and is a long document containing code on many other issues. This document allows for faster and easier-to-use analysis.
+
+## Load data
+
+First we load a CellDataSet called cds generated with Monocle v2. This contains the expression data, cell metdata (phenotypes) as well as pseudotime values.
+
+```{r import_data}
+# define the working directory
+working_directory <- "~/GitHub/SingleCellScripts/"
+
+# set other directories based on working directory
+figures_dir <- paste(working_directory,"figures/",sep="")
+rdata_dir <- paste(working_directory,"data/Rdata/",sep="")
+
+# load object
+seurat_object <- paste(rdata_dir, "seurat_object_final.Rdata", sep = "")
+load(seurat_object)
+
+# Filenames for exporting data
+# cell data object containing pseudotime
+cds_data <- paste(rdata_dir, 'cds_monocle2.Rdata', sep = '')
+
+# differentially expressed genes
+gene_expression <- paste(working_directory, 'data/gene_lists/monocle2_DEG_genes.csv', sep = '')
+
+# genes used for ordering
+ordering_genes <- paste(working_directory, 'data/gene_lists/ordering_genes.csv', sep = '')
+```
+
 ```{r load_libraries}
 # Packages for main analysis, clustering, data structures etc.
 suppressMessages(library(Seurat, quietly = TRUE))
@@ -29,29 +60,6 @@ suppressMessages(library(monocle, quietly = TRUE))
 suppressMessages(library(SCORPIUS, quietly = TRUE))
 ```
 
-# What does this document do?
-
-This document uses pre-generated single cell data objects containing pseudotime/trajctory information and generates plots for data exploration and analysis. The data sets were generated using a different script, which can take a significant amount of time and is a long document containing code on many other issues. This document allows for faster and easier-to-use analysis.
-
-## Load data
-
-First we load a CellDataSet called cds generated with Monocle v2. This contains the expression data, cell metdata (phenotypes) as well as pseudotime values.
-
-```{r import_data}
-# load object
-seurat_object_save <- "~/GitHub/SingleCellScripts/data/Rdata/seurat_object_final.Rdata"
-load(seurat_object_save)
-
-# Filenames for exporting data
-# cell data object containing pseudotime
-cds_data <- '~/GitHub/SingleCellScripts/data/Rdata/cds_monocle2.Rdata'
-
-# differentially expressed genes
-gene_expression <- '~/GitHub/SingleCellScripts/data/gene_lists/monocle2_DEG_genes.csv'
-
-# genes used for ordering
-ordering_genes <- "~/GitHub/SingleCellScripts/data/gene_lists/ordering_genes.csv"
-```
 
 # Trajectory inference/Pseudotime ordering
 
@@ -72,7 +80,6 @@ We chose three methods implemented in R:
 - [slingshot](https://bioconductor.org/packages/release/bioc/vignettes/slingshot/inst/doc/vignette.html#using-slingshot), 
 - [Monocle DDRTree](http://cole-trapnell-lab.github.io/monocle-release/) and
 - [SCORPIUS](https://cran.r-project.org/web/packages/SCORPIUS/index.html)
-- Additionally we implement the [PAGA algorithm](https://genomebiology.biomedcentral.com/track/pdf/10.1186/s13059-019-1663-x) written in Python.
 
 PAGA and RaceID are graph-based, whereas slingshot and monocle use tree-based algorithms.
 All four have free topology inference, i.e. they don't make prior assumptions
@@ -112,7 +119,7 @@ col = brewer.pal(9,'Set1')[sce$sample]
 colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
 plotcol <- colors[cut(sce$slingPseudotime_1, breaks=100)]
 
-pdf(file = '~/GitHub/SingleCellScripts/figures/slingshot_trajectory.pdf', width = 9, height = 6)
+pdf(file = paste(figures_dir, 'slingshot_trajectory.pdf', sep = ''), width = 9, height = 6)
 plot(reducedDims(sce)$UMAP, col = plotcol, pch=16, asp = 1, frame.plot=TRUE)
 lines(SlingshotDataSet(sce), lwd = 3, col = 'black')
 dev.off()
@@ -133,7 +140,7 @@ space <- reduce_dimensionality(
 
 trajectory <- infer_trajectory(space)
 
-pdf(file = '~/GitHub/SingleCellScripts/figures/scorpius_trajectory.pdf', width = 9, height = 6)
+pdf(file = paste(figures_dir, 'scorpius_trajectory.pdf', sep = ''), width = 9, height = 6)
 draw_trajectory_plot(
   space = space, 
   progression_group = groups$merged_data,
@@ -249,13 +256,10 @@ cds <- monocle::reduceDimension(
 
 cds <- monocle::orderCells(cds)
 
-
 # Export files
 save(cds,file = cds_data)
 write_csv2(clustering_DEG_genes, gene_expression)
 write_csv2(data.frame(gene=scedata_ordering_genes), ordering_genes)
-
-#cds <- monocle::orderCells(cds, root_state = GM_state(scedata))
 ```
 
 ## RaceID
