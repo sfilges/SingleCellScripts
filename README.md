@@ -281,3 +281,225 @@ if(sctransform){
 ```
 
 
+### (2) Dimensionality reduction
+
+```r
+# load object
+seurat_object_save <- "~/GitHub/SingleCellScripts/data/Rdata/seurat_object_preprocessed.Rdata"
+load(seurat_object_save)
+
+# define output file
+seurat_object_final <- "~/GitHub/SingleCellScripts/data/Rdata/seurat_object_final.Rdata"
+```
+
+#### Identification of highly variable features (feature selection)
+
+Even after removing features found in only a few cells and removing artefacts
+the data set may be very large with > 15,000 features. Thus, only genes highly 
+variable across the data set are used for downstream analysis. According to
+Luecken and Theis typical cut-offs are between 1000 and 5000 genes. Although
+downstream analysis is robust as to the the number of genes chosen, they recommend
+to use larger values. We used 2000 genes, the default in the Seurat package.
+
+```r
+# Identify the 10 most highly variable genes
+top30 <- head(x = VariableFeatures(object = merged_data), 30)
+
+# plot variable features with and without labels
+plot1 <- Seurat::VariableFeaturePlot(object = merged_data)
+Seurat::LabelPoints(plot = plot1, points = top30, repel = TRUE)
+```
+
+#### Dimensionality reduction & clustering
+
+Despite containing many cells and features scRNA-seq data is inherently low-dimensional,
+i.e. most biological variation in scRNA-seq data can be shown in few dimensions.
+
+Dimensionality reduction techniques generate reduced representations through
+linear or non-linear combination of gene expression vectors. Non-linear methods
+like [tSNE](http://www.jmlr.org/papers/v9/vandermaaten08a.html) and
+[UMAP](https://www.nature.com/articles/nbt.4314) result in better cell 
+visualisations because they capture local similaity in high-dimensional data 
+better than linear methods such as PCA. However, non-linear reduced dimensions 
+are not straight-forward to interpret, wheras principal components and their 
+associated gene loadings can be interpreted easily.
+
+Dimensionality reduction techniques should be interpreted separatly: PCA or 
+diffusion maps for general purpose summarization and trajectory inference, 
+UMAP for exploratory visualization and UMAP with PAGA for complex data sets.
+
+We first apply PCA to the merged data set and print the top five features (loadings) for
+each of the first five principal components, both in positive and negative direction.
+
+We visualise the PCA in two dimensions and colour cells by sample ID. The elbow plot showws the
+PCs ranked by variance contribution, allowing us to determine a reduced dimensionality
+for downstream processing. Typically we want to choose the number of PC around
+a "hinge" in the elbow plot. Alternatively a statistical procedure called Jackstraw,
+implemented in Seurat, can be used to determine the significance of PCs using
+resampling. 
+
+We also plot the top positive and negative loadings for the first six dimensions
+in a heatmap.
+
+```{r dimReduction1, message=FALSE} 
+merged_data <- Seurat::RunPCA(
+  object = merged_data,
+  verbose = FALSE
+)
+
+elbow_plot <- ElbowPlot(
+  object = merged_data
+)
+
+print(x = merged_data[['pca']], dims = 1:5, nfeatures = 5)
+
+merged_data <- Seurat::JackStraw(
+  object = merged_data,
+  num.replicate = 100
+)
+
+merged_data <- Seurat::ScoreJackStraw(
+  object = merged_data,
+  dims = 1:15
+)
+
+jackstraw_plot <- Seurat::JackStrawPlot(
+  object = merged_data,
+  dims = 1:15
+)
+
+pca_dim_plot <- Seurat::DimPlot(
+  object = merged_data,
+  reduction = 'pca', 
+  group.by = 'group'
+)
+pca_dim_plot
+
+pca_dim_loadings <- Seurat::VizDimLoadings(
+  object = merged_data,
+  dims = 1:2, 
+  reduction = 'pca',
+  combine = TRUE
+)
+pca_dim_loadings
+
+pca_dim_heatmap <- Seurat::DimHeatmap(
+  object = merged_data,
+  dims = 1:6,
+  cells = 500,
+  balanced = TRUE,
+  fast = FALSE
+)
+pca_dim_heatmap
+```
+
+#### Neighbour embedding and clustering
+
+As in PhenoGraph, we first construct a k-nearest neighbour (KNN) graph based on 
+the euclidean distance in PCA space, and refine the edge weights between any two 
+cells based on the shared overlap in their local neighborhoods (Jaccard similarity). 
+This step is performed using the FindNeighbors function, and takes as input the 
+previously defined dimensionality of the dataset (first 15 PCs).
+
+To cluster the cells, we next apply modularity optimization techniques such as the 
+Louvain or Leiden algorithms, to iteratively group cells together, with the goal of 
+optimizing the standard modularity function. The FindClusters function implements this 
+procedure, and contains a resolution parameter that sets the ‘granularity’ of the 
+downstream clustering, with increased values leading to a greater number of clusters. 
+We find that setting this parameter between 0.4-1.2 typically returns good results 
+for single-cell datasets of around 3K cells. Optimal resolution often increases for 
+larger datasets. The clusters can be found using the Idents function. A relatively
+easy explanation of the Louvain and Leiden algorithms is bublished [here](https://www.nature.com/articles/s41598-019-41695-z).
+
+```r
+# Constructs a Shared Nearest Neighbor (SNN) Graph for a given dataset. We first 
+# determine the k-nearest neighbors of each cell. We use this knn graph to construct the
+# SNN graph by calculating the neighborhood overlap (Jaccard index) between every cell 
+# and its k.param nearest neighbors.
+merged_data <- FindNeighbors(
+  object = merged_data,
+  k.param = 20,
+  dims = 1:15
+)
+
+# Find clusters by optimizing modularity of a shared nearest neigbour graph using
+# community detection
+# algorithm = 2 (Louvain)
+# algorithm = 4 (Leiden)
+# default resolution is 0.8; use a value above (below) 1.0 if you want to obtain a larger (smaller) number of communities
+merged_data <- FindClusters(
+  object = merged_data,
+  algorithm = 2,
+  resolution = 1.2
+)
+
+merged_data <- RunUMAP(
+  object = merged_data, 
+  dims = 1:15
+)
+```
+
+#### Cell cycle percentages
+
+```r
+dat <- merged_data@meta.data
+
+ggplot(dat, aes(x= Phase,  group=group)) + 
+    geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") +
+    geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="group") +
+    facet_grid(~group) +
+    scale_y_continuous(
+      labels = scales::percent
+      ) +
+  theme_bw()
+```
+
+#### UMAP
+
+```{r plots2, echo=FALSE, fig.width=6, fig.height=4}
+umap1 <- Seurat::DimPlot(
+  object = merged_data,
+  reduction = 'umap',
+  group.by = 'group'
+) + theme(
+  axis.text.x=element_blank(),
+  axis.text.y=element_blank(),
+  axis.ticks.x=element_blank(),
+  axis.ticks.y=element_blank(),
+  legend.position = 'right'
+) + scale_color_brewer(palette = 'Dark2')
+  
+#scale_color_manual(values = c("#ff8668","gray70", "#5e8aab", "#ffce8e"))
+
+umap2 <- Seurat::DimPlot(
+  object = merged_data,
+  reduction = 'umap',
+  group.by = 'seurat_clusters',
+  label = TRUE
+) + theme(
+  axis.text.x=element_blank(),
+  axis.text.y=element_blank(),
+  axis.ticks.x=element_blank(),
+  axis.ticks.y=element_blank(),
+  legend.position = 'none'
+)
+
+umap3 <- Seurat::DimPlot(
+  object = merged_data,
+  reduction = 'umap',
+  group.by = 'Phase'
+) + theme(
+  axis.text.x=element_blank(),
+  axis.text.y=element_blank(),
+  axis.ticks.x=element_blank(),
+  axis.ticks.y=element_blank(),
+  legend.position = 'bottom'
+)
+
+umap1 | (umap2 / umap3)
+
+save(merged_data, file = seurat_object_final)
+```
+
