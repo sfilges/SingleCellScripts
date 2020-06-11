@@ -19,7 +19,7 @@ The R folder contains the following scripts:
 
 The preprocessing script first loads the Seurat and tidyverse packages and sets a few basic parameters for the analysis.
 
-´´´r
+```r
 # run sctransform, this replaces the NormalizeData, ScaleData and FindVariableFeatures
 sctransform = FALSE
 
@@ -34,11 +34,11 @@ seurat_object_save <- "~/GitHub/SingleCellScripts/data/Rdata/seurat_object_prepr
 
 suppressMessages(library(tidyverse, quietly = TRUE))
 suppressMessages(library(Seurat, quietly = TRUE))
-´´´
+```
 
 Next we load the count matrices for each individual sample and then merge them into an single objecy for combined analysis.
 
-´´´r
+```r
 #---------------- scaffold cultures -------------------
 # Analyze FUS-DDIT3 samples
 fd_scf <- Read10X(paste(data_directory,"/HT1080_Scf_FD/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
@@ -79,7 +79,7 @@ merged_data[["percent.mt"]] <- PercentageFeatureSet(
   object = merged_data, 
   pattern = "^MT-"
 )
-´´´
+```
 
 
 
