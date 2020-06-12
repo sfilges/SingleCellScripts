@@ -24,7 +24,6 @@ library(mclust, quietly = TRUE))
 library(biomaRt, quietly = TRUE))
 library(msigdbr, quietly = TRUE))
 library(clusterProfiler, quietly = TRUE))
-library(destiny, quietly = TRUE))
 library(SummarizedExperiment, quietly = TRUE))
 require(clusterExperiment, quietly = TRUE))
 library(MAST, quietly = TRUE)
@@ -36,11 +35,8 @@ library(RCy3, quietly = TRUE)
 
 # Packages for data handeling and plotting
 library(tidyverse, quietly = TRUE)
-library(reshape, quietly = TRUE)
-library(cowplot, quietly = TRUE)
 library(viridis, quietly = TRUE)
 library(RColorBrewer, quietly = TRUE)
-library(VennDiagram, quietly = TRUE)
 library(DT, quietly = TRUE)
 
 # Packages for pseudotime ordering
