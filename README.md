@@ -53,21 +53,32 @@ library(SCORPIUS, quietly = TRUE)
 
 ### (1) Preprocessing data
 
-The preprocessing script first loads the Seurat and tidyverse packages and sets a few basic parameters for the analysis.
+The preprocessing script first loads the Seurat and tidyverse packages and sets a few basic parameters for the analysis. In particular, the user must define a working directory.
 
 ```r
+#----------------------- // USER defined variables //---------------------------
+# define the working directory
+working_directory <- "~/GitHub/SingleCellScripts/"
+
 # run sctransform, this replaces the NormalizeData, ScaleData and FindVariableFeatures
 sctransform = FALSE
 
 # Should cell cycle filtering be applied or not?
 filter_cell_cycle = FALSE
+#--------------------------------------------------------------------------------------
 
-# define the working directory
-data_directory <- "~/GitHub/SingleCellScripts/10x/"
+# set other directories based on working directory
+matrix_dir <- paste(working_directory,"data/count_matrices/",sep="")
+rdata_dir <- paste(working_directory,"data/Rdata/",sep="")
 
-# define output file
-seurat_object_save <- "~/GitHub/SingleCellScripts/data/Rdata/seurat_object_preprocessed.Rdata"
+# Check if directory for Rdata files exists, if not create it
+ifelse(
+  !dir.exists(rdata_dir), 
+  dir.create(file.path(rdata_dir)), FALSE
+)
 
+# Store seurat object for quick re-use
+seurat_object_save <- paste(rdata_dir,"seurat_object_preprocessed.Rdata",sep = "")
 suppressMessages(library(tidyverse, quietly = TRUE))
 suppressMessages(library(Seurat, quietly = TRUE))
 ```
