@@ -75,6 +75,8 @@ ifelse(
 
 # Store seurat object for quick re-use
 seurat_object_save <- paste(rdata_dir,"seurat_object_preprocessed.Rdata",sep = "")
+
+# Load libraries for preprocessing
 suppressMessages(library(tidyverse, quietly = TRUE))
 suppressMessages(library(Seurat, quietly = TRUE))
 ```
@@ -84,23 +86,23 @@ Next we load the count matrices for each individual sample and then merge them i
 ```r
 #---------------- scaffold cultures -------------------
 # Analyze FUS-DDIT3 samples
-fd_scf <- Read10X(paste(data_directory,"/HT1080_Scf_FD/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
+fd_scf <- Read10X(paste(matrix_dir,"HT1080_Scf_FD/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
 fd_scf <- CreateSeuratObject(fd_scf,project = "scf_FD", min.cells = 5)
 fd_scf$group <- "scf-FD"
 
 # Analyze WT samples
-wt_scf <- Read10X(paste(data_directory,"HT1080_Scf_WT/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
+wt_scf <- Read10X(paste(matrix_dir,"HT1080_Scf_WT/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
 wt_scf <- CreateSeuratObject(wt_scf,project = "scf_WT", min.cells = 5)
 wt_scf$group <- "scf-WT"
 
 #---------------- xenograft cultures -------------------
 # Analyze WT samples
-wt_xen <- Read10X(paste(data_directory,"HT1080_Xen_WT/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
+wt_xen <- Read10X(paste(matrix_dir,"HT1080_Xen_WT/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
 wt_xen <- CreateSeuratObject(wt_xen,project = "xen_WT", min.cells = 5)
 wt_xen$group <- "xenograft-WT"
 
 # Analyze FUS-DDIT3 samples
-fd_xen <- Read10X(paste(data_directory,"HT1080_Xen_FD/HT1080_FD_mouse_custom_hg38/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
+fd_xen <- Read10X(paste(matrix_dir,"HT1080_Xen_FD/outs/filtered_gene_bc_matrices/custom_egfp_hg38/",sep=""))
 fd_xen <- CreateSeuratObject(fd_xen,project = "xen_FD", min.cells = 5)
 fd_xen$group <- "xenograft-FD"
 
