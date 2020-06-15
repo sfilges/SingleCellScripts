@@ -2,8 +2,9 @@
 data/Rdata
 manuscript
 
-# Ignore all html files
+# Ignore all html and image files
 *.html
 
 # Ignore Mac system files
 .DS_store
+.Rhistory
