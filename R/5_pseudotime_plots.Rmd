@@ -73,17 +73,15 @@ plot1 <- monocle::plot_cell_trajectory(
 plot2 <- monocle::plot_cell_trajectory(
   cds = cds, 
   color_by = "group"
-) + scale_color_manual(
-  values = c('#ff8668', 'gray70', '#5e8aab', '#ffce8e')
-  )
+) + scale_color_manual(values = c("#003f5c","#7a5195","#ef5675","#ffa600"))
 
 # Save monocle pseudotime
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_pseudotime.svg', plot = plot1, width = 9, height = 9, device = "svg")
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_pseudotime.pdf', plot = plot1, width = 9, height = 9, device = "pdf")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_pseudotime.svg', plot = plot1, width = 6, height = 6, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_pseudotime.pdf', plot = plot1, width = 6, height = 6, device = "pdf")
 
 # Save moncole samples
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_samples.svg', plot = plot2, width = 9, height = 9, device = "svg")
-ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_samples.pdf', plot = plot2, width = 9, height = 9, device = "pdf")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_samples.svg', plot = plot2, width = 6, height = 6, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_samples.pdf', plot = plot2, width = 6, height = 6, device = "pdf")
 
 plot1 + plot2
 ```
@@ -124,7 +122,7 @@ heatmap <- monocle::plot_pseudotime_heatmap(
   show_rownames = FALSE,
   hmcols = viridis::magma(256),
   return_heatmap = TRUE
-)
+) + scale_color_brewer(palette = "Dark2")
 
 pdf(file = '~/GitHub/SingleCellScripts/figures/heatmap_4_clusters.pdf', width = 7,height = 3)
 heatmap
@@ -160,8 +158,10 @@ annotation = list(
 )
 annotation_colors = list(
   time = viridis::viridis(256),
-  group =  c("#ff8668", "gray70","#5e8aab","#ffce8e")
+  group =  c("#003f5c","#7a5195","#ef5675","#ffa600")
 )
+
+# c("#ff8668", "gray70","#5e8aab","#ffce8e")
 
 NMF::aheatmap(
   x = as.matrix(exprs(cds_time[1:10,])),
@@ -205,7 +205,7 @@ plot2 <- monocle::plot_genes_in_pseudotime(
   relative_expr = TRUE,
   color_by = "group",
   cell_size = 0.5
-  ) + scale_color_manual(values = c("#ff8668", "gray70","#5e8aab","#ffce8e"))+
+  ) + scale_color_manual(values = c("#003f5c","#7a5195","#ef5675","#ffa600")) +
   theme(legend.position = 'bottom')
 
 #+ scale_color_brewer(palette = "Dark2")
@@ -216,262 +216,7 @@ plot1 + plot2
 
 
 ```{r}
-custom_dotplot <- function(
-  egmt,
-  showCategory = 20,
-  x.axis = 'GeneRatio',
-  font.size = 7
-  ){
-  data <- egmt@result %>%
-    dplyr::arrange(qvalue) %>%
-    dplyr::select(-geneID) %>%
-    tidyr::separate(GeneRatio, c("top", "bottom"), sep = "/") %>%
-    dplyr::mutate(GeneRatio = as.numeric(top)/as.numeric(bottom))
-  data <- head(data, showCategory)
-  data$category <- factor(data$ID, levels = rev(data$ID))
-  if(x.axis == 'GeneRatio') {
-    dp <- ggplot(
-      data = data,
-      mapping = aes(x = GeneRatio, y = category, color = -log10(qvalue))
-    ) +
-      geom_point(aes(size = Count)) +
-      scale_color_continuous(
-        low="red", high="blue",
-        name = '-log10(qvalue)',
-        guide=guide_colorbar(reverse=FALSE)
-        ) +
-      theme_minimal() +
-      theme(
-        axis.line = element_line(color="black", size = 0.2),
-        axis.title.y = element_blank(),
-        axis.text.y = element_text(size = font.size)
-        ) + guides(size = guide_legend(reverse = TRUE))
-  } else if (x.axis == 'qvalue'){
-    dp <- ggplot(
-      data = data,
-      mapping = aes(x = -log10(qvalue), y = category, color = GeneRatio)
-    ) +
-      geom_point(aes(size = Count)) +
-      scale_color_continuous(
-        low="red", high="blue",
-        name = 'GeneRatio',
-        guide=guide_colorbar(reverse=FALSE)
-        ) +
-      theme_minimal() +
-      theme(
-        axis.line = element_line(color="black", size = 0.2),
-        axis.title.y = element_blank(),
-        axis.text.y = element_text(size = font.size)
-        ) + guides(size = guide_legend(reverse = TRUE))
-  }
-  return(dp)
-}
-
-enricher_custom <- function(
-  gene,
-  pvalueCutoff,
-  pAdjustMethod = "BH",
-  universe = NULL,
-  minGSSize = 10,
-  maxGSSize = 500,
-  qvalueCutoff = 0.2,
-  USER_DATA) {
-  
-    gene <- as.character(unique(gene))
-    qExtID2TermID <- EXTID2TERMID(gene, USER_DATA)
-    qTermID <- unlist(qExtID2TermID)
-    
-    if (is.null(qTermID)) {
-      message("--> No gene can be mapped....")
-      p2e <- get("PATHID2EXTID", envir = USER_DATA)
-      sg <- unlist(p2e[1:10])
-      sg <- sample(sg, min(length(sg), 6))
-      message("--> Expected input gene ID: ", paste0(sg, collapse = ","))
-      message("--> return NULL...")
-      return(NULL)
-    }
-    qExtID2TermID.df <- data.frame(
-      extID = rep(names(qExtID2TermID),
-                  times = lapply(qExtID2TermID, length)),
-      termID = qTermID
-    )
-    
-    qExtID2TermID.df <- unique(qExtID2TermID.df)
-    qTermID2ExtID <- with(
-      qExtID2TermID.df, split(as.character(extID),as.character(termID))
-    )
-    
-    extID <- ALLEXTID(USER_DATA)
-    
-    if (missing(universe)) 
-      universe <- NULL
-    if (!is.null(universe)) {
-      extID <- as.character(universe)
-    }
-    
-    qTermID2ExtID <- lapply(qTermID2ExtID, intersect, extID)
-    qTermID <- unique(names(qTermID2ExtID))
-    termID2ExtID <- TERMID2EXTID(qTermID, USER_DATA)
-    termID2ExtID <- lapply(termID2ExtID, intersect, extID)
-    geneSets <- termID2ExtID
-    idx <- get_geneSet_index(termID2ExtID, minGSSize, maxGSSize)
-    
-    if (sum(idx) == 0) {
-      msg <- paste("No gene set have size >", minGSSize, "...")
-      message(msg)
-      message("--> return NULL...")
-      return(NULL)
-    }
-    
-    termID2ExtID <- termID2ExtID[idx]
-    qTermID2ExtID <- qTermID2ExtID[idx]
-    qTermID <- unique(names(qTermID2ExtID))
-    
-    k <- sapply(qTermID2ExtID, length)
-    k <- k[qTermID]
-    M <- sapply(termID2ExtID, length)
-    M <- M[qTermID]
-    N <- rep(length(extID), length(M))
-    n <- rep(length(qExtID2TermID), length(M))
-    args.df <- data.frame(
-      numWdrawn = k - 1, 
-      numW = M, 
-      numB = N - M, 
-      numDrawn = n
-    )
-    
-    pvalues <- apply(
-      args.df, 1, function(n) phyper(n[1], n[2], n[3], n[4], lower.tail = FALSE)
-    )
-    
-    GeneRatio <- apply(
-      data.frame(a = k, b = n), 1, function(x) paste(x[1], "/", x[2], sep = "", collapse = "")
-    )
-    
-    BgRatio <- apply(
-      data.frame(a = M, b = N), 1, function(x) paste(x[1], "/", x[2], sep = "", collapse = "")
-    )
-    
-    Over <- data.frame(
-      ID = as.character(qTermID), 
-      GeneRatio = GeneRatio, 
-      BgRatio = BgRatio, 
-      pvalue = pvalues,
-      stringsAsFactors = FALSE
-    )
-    
-    p.adj <- p.adjust(Over$pvalue, method = pAdjustMethod)
-    
-    qobj <- tryCatch(qvalue(p = Over$pvalue, 
-                            lambda = 0.05,
-                            pi0.method = "bootstrap"),
-                     error = function(e) NULL)
-    
-    if (class(qobj) == "qvalue") {
-      qvalues <- qobj$qvalues
-    }
-    else {
-      qvalues <- NA
-    }
-    
-    geneID <- sapply(qTermID2ExtID, function(i) paste(i, collapse = "/"))
-    geneID <- geneID[qTermID]
-    
-    Over <- data.frame(
-      Over,
-      p.adjust = p.adj,
-      qvalue = qvalues,
-      geneID = geneID, 
-      Count = k, 
-      stringsAsFactors = FALSE
-    )
-    
-    Description <- TERM2NAME(qTermID, USER_DATA)
-    
-    if (length(qTermID) != length(Description)) {
-      idx <- qTermID %in% names(Description)
-      Over <- Over[idx, ]
-    }
-    
-    Over$Description <- Description
-    nc <- ncol(Over)
-    Over <- Over[, c(1, nc, 2:(nc - 1))]
-    Over <- Over[order(pvalues), ]
-    Over$ID <- as.character(Over$ID)
-    Over$Description <- as.character(Over$Description)
-    row.names(Over) <- as.character(Over$ID)
-    
-    x <- new("enrichResult", result = Over, pvalueCutoff = pvalueCutoff, 
-             pAdjustMethod = pAdjustMethod, qvalueCutoff = qvalueCutoff, 
-             gene = as.character(gene), universe = extID, geneSets = geneSets, 
-             organism = "UNKNOWN", keytype = "UNKNOWN", ontology = "UNKNOWN", 
-             readable = FALSE)
-    
-    return(x)
-}
-
-enricher_edit<-function(
-  gene, pvalueCutoff = 0.05, pAdjustMethod = "BH", universe, minGSSize = 10, 
-  maxGSSize = 500, qvalueCutoff = 0.2, TERM2GENE, TERM2NAME = NA
-  ){
-  USER_DATA <- build_Anno(TERM2GENE, TERM2NAME)
-  enricher_custom(
-    gene = gene, pvalueCutoff = pvalueCutoff, 
-    pAdjustMethod = pAdjustMethod, universe = universe, minGSSize = minGSSize, 
-    maxGSSize = maxGSSize, qvalueCutoff = qvalueCutoff, USER_DATA = USER_DATA
-  )
-}
-
-body(enricher)<-body(enricher_edit)
-
-environment(enricher_custom)<-environment(clusterProfiler:::enricher_internal)
-
-enrichment_plot <- function(data, id){
-  
-  gene <- data %>% dplyr::filter(cluster == id)
-  
-  kegg <- read.gmt(
-    gmtfile = paste(working_directory, "data/MSigDB/c2.cp.kegg.v7.1.symbols.gmt", sep = "")
-  )
-  cgp <- read.gmt(
-    gmtfile =  paste(working_directory, "data/MSigDB/c2.cgp.v7.1.symbols.gmt", sep = "")
-  )
-  
-  hgnc_symbols <- read.csv(
-    file = paste(working_directory, "data/MSigDB/hgnc.txt", sep = ""),
-    sep = '\t',
-    header=TRUE
-  )
-  
-  hgnc_symbols <- hgnc_symbols$Approved.symbol
-
-  egmt <- enricher(
-    gene$gene,
-    TERM2GENE=cgp,
-    pvalueCutoff = 0.1,
-    pAdjustMethod = 'fdr',
-    minGSSize = NA,
-    maxGSSize = NA,
-    qvalueCutoff = 0.05,
-    universe = hgnc_symbols
-  )
-  cgp_dotplot <- custom_dotplot(egmt, x.axis = "qvalue")
-  
-  egmt <- enricher(
-    gene$gene,
-    TERM2GENE=kegg,
-    pvalueCutoff = 0.1,
-    pAdjustMethod = 'fdr',
-    minGSSize = NA,
-    maxGSSize = NA,
-    qvalueCutoff = 0.05,
-    universe = hgnc_symbols
-  )
-  kegg_dotplot <- custom_dotplot(egmt, x.axis = "qvalue")
-  
-  return((cgp_dotplot + kegg_dotplot))
-}
-
+source("helper_functions.R")
 
 cluster_1 <- enrichment_plot(data = t, id = 1)
 cluster_2 <- enrichment_plot(data = t, id = 2)

@@ -225,16 +225,19 @@ merged_data <- Seurat::RunUMAP(
 ```{r, echo=FALSE, message=FALSE}
 dat <- merged_data@meta.data
 
-ggplot(dat, aes(x= Phase,  group=group)) + 
-    geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") +
-    geom_text(aes( label = scales::percent(..prop..),
-                   y= ..prop.. ), stat= "count", vjust = -.5) +
-    labs(y = "Percent", fill="group") +
-    facet_grid(~group) +
-    scale_y_continuous(
-      labels = scales::percent
-      ) +
+cycle_plot <- ggplot(dat, aes(x= Phase,  group=group)) + 
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") +
+  geom_text(aes( label = scales::percent(..prop..), y= ..prop.. ), stat= "count", vjust = -.5) +
+  labs(y = "Percent", fill="group") +
+  facet_grid(~group) +
+  scale_y_continuous(labels = scales::percent) +
   theme_bw()
+
+
+# Save cell cycle plot
+ggplot2::ggsave(filename = paste(figures_dir, 'cell_cycle_percentage.svg', sep = ''), plot = cycle_plot, width = 9, height = 9, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'cell_cycle_percentage.pdf', sep = ''), plot = cycle_plot, width = 9, height = 9, device = "pdf")
+
 ```
 
 
@@ -251,7 +254,10 @@ umap1 <- Seurat::DimPlot(
   axis.ticks.x=element_blank(),
   axis.ticks.y=element_blank(),
   legend.position = 'bottom'
-) + scale_color_manual(values = c("#ff8668","gray70", "#5e8aab", "#ffce8e"))
+) + scale_color_manual(values = c("#003f5c","#7a5195","#ef5675","#ffa600"))
+  
+#scale_color_manual(values = c("#003f5c","#7a5195","#ef5675","#ffa600"))
+#scale_color_manual(values = c("#ff8668","gray70", "#5e8aab", "#ffce8e"))
 
 umap2 <- Seurat::DimPlot(
   object = merged_data,
