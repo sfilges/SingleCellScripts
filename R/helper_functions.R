@@ -1,3 +1,35 @@
+##---------------------------------// Header //------------------------------
+## 
+## Miscellaneous R functions
+##
+## This document contains various functions for data analysis and visualisation.
+##
+## Author: Stefan Filges
+##
+## Version 2020-06-16
+##
+##--------------------------------//  Main //----------------------------------
+
+
+
+#' Custom doplot for gene set enrichments
+#' 
+#' Generates dotplots to visualise gene-set enrichments similar to enrichplot::dotplot.
+#' 
+#' @export
+#' 
+#' @import dplyr
+#' @import ggplot2
+#' @importFrom tidyr separate
+#'
+#' @param egmt object created with the clusterProfiler::enricher function
+#' @param showCategory number of categories to plot, default is 20
+#' @param x.axis which variable to show on the x axis, either 'qvalue' or 'GeneRatio'
+#' @param font.size font size for labels
+#' @param colour colour scheme to use
+#' 
+#' @author Stefan Filges
+#' 
 custom_dotplot <- function(
   egmt,
   showCategory = 20,
@@ -5,12 +37,23 @@ custom_dotplot <- function(
   font.size = 7,
   colour = 'magma'
 ){
+  
+  qval_cutoff <- egmt@qvalueCutoff
+  pval_cutoff <- egmt@pvalueCutoff
+  
+  # filter results table
   data <- egmt@result %>%
     dplyr::arrange(qvalue) %>%
     dplyr::select(-geneID) %>%
+    dplyr::filter(pvalue < pval_cutoff) %>%
+    dplyr::filter(qvalue < qval_cutoff) %>%
     tidyr::separate(GeneRatio, c("top", "bottom"), sep = "/") %>%
     dplyr::mutate(GeneRatio = as.numeric(top)/as.numeric(bottom))
+  
+  # select top categories
   data <- head(data, showCategory)
+  
+  # generate plot
   data$category <- factor(data$ID, levels = rev(data$ID))
   if(x.axis == 'GeneRatio') {
     dp <- ggplot(
@@ -35,8 +78,8 @@ custom_dotplot <- function(
       mapping = aes(x = -log10(qvalue), y = category, color = GeneRatio)
     ) +
       geom_point(aes(size = Count)) +
-      scale_color_viridis_c(option = colour, guide = guide_colorbar(reverse=FALSE)) +
-      #scale_color_continuous(low="red", high="blue",name = 'GeneRatio',guide=guide_colorbar(reverse=FALSE)) +
+      #scale_color_viridis_c(option = colour, guide = guide_colorbar(reverse=FALSE)) +
+      scale_color_continuous(low="red", high="blue",name = 'GeneRatio',guide=guide_colorbar(reverse=FALSE)) +
       theme_minimal() +
       theme(
         axis.line = element_line(color="black", size = 0.2),
@@ -46,6 +89,7 @@ custom_dotplot <- function(
   }
   return(dp)
 }
+
 
 enricher_custom <- function(
   gene,
@@ -213,6 +257,10 @@ environment(enricher_custom)<-environment(clusterProfiler:::enricher_internal)
 #' @param data gmt object
 #' @param id cluster id
 #' 
+#' @import monocle
+#' @import pheatmap
+#' @importFrom RColorBrewer brewer.pal
+#' 
 #' @export
 enrichment_plot <- function(data, id){
   
@@ -236,7 +284,7 @@ enrichment_plot <- function(data, id){
   
   hgnc_symbols <- hgnc_symbols$Approved.symbol
   
-  egmt <- enricher(
+  egmt <- clusterProfiler::enricher(
     gene$gene,
     TERM2GENE=cgp,
     pvalueCutoff = 0.1,
@@ -248,7 +296,7 @@ enrichment_plot <- function(data, id){
   )
   cgp_dotplot <- custom_dotplot(egmt, x.axis = "qvalue")
   
-  egmt <- enricher(
+  egmt <- clusterProfiler::enricher(
     gene$gene,
     TERM2GENE=kegg,
     pvalueCutoff = 0.1,
@@ -289,54 +337,27 @@ enrichment_plot <- function(data, id){
 
 
 
-pseudotime_hm <- function(
-  cds_subset,
-  cluster_rows = TRUE,
-  hclust_method = "ward.D2", 
-  num_clusters = 4, 
-  hmcols = NULL,
-  add_annotation_row = NULL, 
-  add_annotation_col = NULL, 
-  show_rownames = FALSE, 
-  use_gene_short_name = TRUE,
-  norm_method = c("log", "vstExprs"), 
-  scale_max = 3, 
-  scale_min = -3, 
-  trend_formula = "~sm.ns(Pseudotime, df=3)", 
-  return_heatmap = FALSE, 
-  cores = 1
-){
-  
-  # Add pseudotime 
-  cds_time <- cds_subset[sig_gene_names,]
-  #cds_time <- cds_subset[,order(cds_subset$Pseudotime)]
-  cds_subset <- cds_time 
 
+pseudotime_hm <- function (cds_subset, cluster_rows = TRUE, hclust_method = "ward.D2", 
+          num_clusters = 6, hmcols = NULL, add_annotation_row = NULL, 
+          add_annotation_col = NULL, show_rownames = FALSE, use_gene_short_name = TRUE, 
+          norm_method = c("log", "vstExprs"), scale_max = 3, 
+          scale_min = -3, trend_formula = "~sm.ns(Pseudotime, df=3)", 
+          return_heatmap = FALSE, cores = 1) 
+{
   num_clusters <- min(num_clusters, nrow(cds_subset))
   pseudocount <- 1
-  
-  newdata <- data.frame(
-    Pseudotime = seq(
-      min(pData(cds_subset)$Pseudotime),
-      max(pData(cds_subset)$Pseudotime),
-      length.out = ncol(cds_subset)
-    )
-  )
-  
-  m <- monocle::genSmoothCurves(
-    cds = cds_subset,
-    cores = cores,
-    trend_formula = trend_formula, 
-    relative_expr = TRUE, 
-    new_data = newdata
-  )
-  
+  newdata <- data.frame(Pseudotime = seq(min(pData(cds_subset)$Pseudotime), 
+                                         max(pData(cds_subset)$Pseudotime), length.out = 100))
+  m <- monocle::genSmoothCurves(cds_subset, cores = cores, trend_formula = trend_formula, 
+                       relative_expr = T, new_data = newdata)
   m = m[!apply(m, 1, sum) == 0, ]
   norm_method <- match.arg(norm_method)
   if (norm_method == "vstExprs" && is.null(cds_subset@dispFitInfo[["blind"]]$disp_func) == 
       FALSE) {
     m = vstExprs(cds_subset, expr_matrix = m)
-  } else if (norm_method == "log") {
+  }
+  else if (norm_method == "log") {
     m = log10(m + pseudocount)
   }
   m = m[!apply(m, 1, sd) == 0, ]
@@ -348,87 +369,37 @@ pseudotime_hm <- function(
   heatmap_matrix <- m
   row_dist <- as.dist((1 - cor(Matrix::t(heatmap_matrix)))/2)
   row_dist[is.na(row_dist)] <- 1
-  
   if (is.null(hmcols)) {
     bks <- seq(-3.1, 3.1, by = 0.1)
-    hmcols <- colorRamps::blue2green2red(length(bks) - 1)
-  } else {
+    hmcols <- blue2green2red(length(bks) - 1)
+  }
+  else {
     bks <- seq(-3.1, 3.1, length.out = length(hmcols))
   }
-  
-  ph <- pheatmap::pheatmap(
-    mat = heatmap_matrix,
-    useRaster = FALSE, 
-    cluster_cols = FALSE, 
-    cluster_rows = cluster_rows,
-    show_rownames = FALSE, 
-    show_colnames = FALSE, 
-    clustering_distance_rows = row_dist, 
-    clustering_method = hclust_method, 
-    cutree_rows = num_clusters, 
-    silent = TRUE, 
-    filename = NA,
-    breaks = bks, 
-    border_color = NA,
-    color = hmcols
-  )
-  
+  ph <- pheatmap::pheatmap(heatmap_matrix, useRaster = T, cluster_cols = FALSE, 
+                 cluster_rows = cluster_rows, show_rownames = F, show_colnames = F, 
+                 clustering_distance_rows = row_dist, clustering_method = hclust_method, 
+                 cutree_rows = num_clusters, silent = TRUE, filename = NA, 
+                 breaks = bks, border_color = NA, color = hmcols)
   if (cluster_rows) {
-    annotation_row <- data.frame(Cluster = factor(cutree(ph$tree_row, num_clusters)))
-  } else {
+    annotation_row <- data.frame(Cluster = factor(cutree(ph$tree_row, 
+                                                         num_clusters)))
+    
+    annotation_colors = list(
+      Cluster = RColorBrewer::brewer.pal(n = 4, name = "Set1")
+    )
+    
+    names(annotation_colors$Cluster) <- unique(annotation_row$Cluster)
+  }
+  else {
     annotation_row <- NULL
   }
-  
-  annotation_col = data.frame(
-    time = cds_subset$Pseudotime,
-    group = factor(cds_subset$group)
-  )
-  row.names(annotation_col) <- colnames(cds_subset)
-  colnames(heatmap_matrix) <- colnames(cds_subset)
-  
-  annotation_colors = list(
-    time = viridis::viridis(256),
-    group =  c("#ff8668","gray70", "#5e8aab", "#ffce8e"),
-    Cluster = brewer.pal(n = 4, name = "Set1")
-  )
-  
-  names(annotation_colors$group) <- levels(annotation_col$group)
-  names(annotation_colors$Cluster) <- unique(annotation_row$Cluster)
-  
-  hmcols = viridis::magma(64)
-  
-  ph <- pheatmap::pheatmap(
-    mat = heatmap_matrix,
-    useRaster = FALSE, 
-    cluster_cols = FALSE, 
-    cluster_rows = cluster_rows,
-    show_rownames = FALSE, 
-    show_colnames = FALSE, 
-    annotation_col = annotation_col, 
-    annotation_row = annotation_row,
-    annotation_colors = annotation_colors,
-    clustering_distance_rows = row_dist, 
-    clustering_method = hclust_method, 
-    cutree_rows = num_clusters, 
-    silent = TRUE, 
-    filename = NA,
-    breaks = bks, 
-    border_color = NA,
-    color = hmcols
-  )
-  
-  ggplot2::ggsave(
-    filename = '~/GitHub/SingleCellScripts/figures/ph.pdf',
-    plot = ph, width = 9, height = 6, device = "pdf"
-  )
-  
   if (!is.null(add_annotation_row)) {
     old_colnames_length <- ncol(annotation_row)
     annotation_row <- cbind(annotation_row, add_annotation_row[row.names(annotation_row), 
                                                                ])
     colnames(annotation_row)[(old_colnames_length + 1):ncol(annotation_row)] <- colnames(add_annotation_row)
   }
-  
   if (!is.null(add_annotation_col)) {
     if (nrow(add_annotation_col) != 100) {
       stop("add_annotation_col should have only 100 rows (check genSmoothCurves before you supply the annotation data)!")
@@ -461,32 +432,19 @@ pseudotime_hm <- function(
   if (!is.null(annotation_row)) 
     row.names(annotation_row) <- row_ann_labels
   colnames(heatmap_matrix) <- c(1:ncol(heatmap_matrix))
-  
-  
-  ph_res <- pheatmap(
-    heatmap_matrix[, ],
-    useRaster = T,
-    cluster_cols = FALSE, 
-    cluster_rows = cluster_rows,
-    show_rownames = show_rownames, 
-    show_colnames = F, 
-    clustering_distance_rows = row_dist, 
+  ph_res <- pheatmap::pheatmap(heatmap_matrix[, ], useRaster = T, cluster_cols = FALSE, 
+                     cluster_rows = cluster_rows, show_rownames = show_rownames, 
+                     show_colnames = F, clustering_distance_rows = row_dist,annotation_colors = annotation_colors,
                      clustering_method = hclust_method, cutree_rows = num_clusters, 
                      annotation_row = annotation_row, annotation_col = annotation_col, 
                      treeheight_row = 20, breaks = bks, fontsize = 6, color = hmcols, 
                      border_color = NA, silent = TRUE, filename = NA)
-  
-  
-  
   grid::grid.rect(gp = grid::gpar("fill", col = NA))
   grid::grid.draw(ph_res$gtable)
   if (return_heatmap) {
     return(ph_res)
   }
 }
-
-
-
 
 
 

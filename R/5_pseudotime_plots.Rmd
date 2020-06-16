@@ -58,6 +58,8 @@ rdata_dir <- paste(working_directory,"data/Rdata/",sep="")
 load(file = paste(rdata_dir, 'seurat_object_final.Rdata', sep = ''))
 load(file = paste(rdata_dir, 'cds_monocle2.Rdata', sep = ''))
 
+source(paste(working_directory, 'R/helper_functions.R', sep = ''))
+
 clustering_DEG_genes = read.csv2(file = paste(working_directory, 'data/gene_lists/monocle2_DEG_genes.csv', sep = ''))
 order_genes <- read.csv2(file = paste(working_directory, 'data/gene_lists/ordering_genes.csv', sep = ''))
 ```
@@ -73,7 +75,7 @@ plot1 <- monocle::plot_cell_trajectory(
 plot2 <- monocle::plot_cell_trajectory(
   cds = cds, 
   color_by = "group"
-) + scale_color_manual(values = c("#003f5c","#7a5195","#ef5675","#ffa600"))
+) + scale_color_manual(values = c("#ff8668", "gray70","#5e8aab","#ffce8e"))
 
 # Save monocle pseudotime
 ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_pseudotime.svg', plot = plot1, width = 6, height = 6, device = "svg")
@@ -113,7 +115,18 @@ diff_test_res <- monocle::differentialGeneTest(
 
 sig_gene_names <- row.names(subset(diff_test_res, qval < 0.01))
 
-heatmap <- monocle::plot_pseudotime_heatmap(
+#heatmap <- monocle::plot_pseudotime_heatmap(
+#  cds_subset[sig_gene_names,],
+#  num_clusters = 4,
+#  cores = 4,
+#  cluster_rows = TRUE,
+#  norm_method = 'vstExprs',
+#  show_rownames = FALSE,
+#  hmcols = viridis::magma(256),
+#  return_heatmap = TRUE
+#)
+
+heatmap <- pseudotime_hm(
   cds_subset[sig_gene_names,],
   num_clusters = 4,
   cores = 4,
@@ -122,11 +135,16 @@ heatmap <- monocle::plot_pseudotime_heatmap(
   show_rownames = FALSE,
   hmcols = viridis::magma(256),
   return_heatmap = TRUE
-) + scale_color_brewer(palette = "Dark2")
+)
 
-pdf(file = '~/GitHub/SingleCellScripts/figures/heatmap_4_clusters.pdf', width = 7,height = 3)
-heatmap
-dev.off()
+
+#pdf(file = '~/GitHub/SingleCellScripts/figures/heatmap_4_clusters.pdf', width = 7,height = 3)
+#heatmap
+#dev.off()
+
+# Save cluster1 enrichments
+ggplot2::ggsave(filename = paste(figures_dir, 'pseudotime_heatmap.svg', sep = ''), plot = heatmap, width = 7, height = 3, device = "svg")
+ggplot2::ggsave(filename = paste(figures_dir, 'pseudotime_heatmap.pdf', sep = ''), plot = heatmap, width = 7, height = 3, device = "pdf")
 
 # Retrieve gene names + cluster identities
 clusters <- cutree(heatmap$tree_row, k = 4)
@@ -158,9 +176,10 @@ annotation = list(
 )
 annotation_colors = list(
   time = viridis::viridis(256),
-  group =  c("#003f5c","#7a5195","#ef5675","#ffa600")
+  group =  c("#ff8668", "gray70","#5e8aab","#ffce8e")
 )
 
+# c("#003f5c","#7a5195","#ef5675","#ffa600")
 # c("#ff8668", "gray70","#5e8aab","#ffce8e")
 
 NMF::aheatmap(
@@ -184,11 +203,26 @@ diff_test_res <- diff_test_res %>%
   dplyr::filter(qval < 0.01) %>%
   dplyr::arrange(qval)
 
-my_genes <- c('CDKN2C', 'LAMA4', 'GAPDH', 'APOE', 'ALDOA')
-cds_subset <- cds[my_genes,]
+#my_genes <- c('IL6', 'ENO2', 'IL24', 'KRT80', 'MME')
+#cds_subset <- cds[my_genes,]
+
+# Methylation associated targets
+HDAC1_TARGETS_UP <- read_delim(paste(working_directory,'data/MSigDB/SENESE_HDAC1_TARGETS_UP.txt',sep=''), delim = ' ')
+HDAC3_TARGETS_UP <- read_delim(paste(working_directory,'data/MSigDB/SENESE_HDAC3_TARGETS_UP.txt',sep=''), delim = ' ')
+SATB1_TARGETS_UP <- read_delim(paste(working_directory,'data/MSigDB/HAN_SATB1_TARGETS_UP.txt',sep=''), delim = ' ')
+
+
+my_genes <- t %>% dplyr::filter(cluster == 2)
+my_genes <- my_genes[my_genes$gene %in% SATB1_TARGETS_UP$HAN_SATB1_TARGETS_UP,]
+
+cds_subset <- cds[my_genes$gene[1:5],]
 
 #markers_to_plot <- t %>% dplyr::group_by(cluster) %>% summarise(first = first(gene)) 
 #cds_subset <- cds[markers_to_plot$first,]
+
+
+my_genes <- c('IL6', 'MDM2')
+cds_subset <- cds[my_genes,]
 
 # Plot by pseudotime
 plot1 <- monocle::plot_genes_in_pseudotime(
@@ -205,7 +239,7 @@ plot2 <- monocle::plot_genes_in_pseudotime(
   relative_expr = TRUE,
   color_by = "group",
   cell_size = 0.5
-  ) + scale_color_manual(values = c("#003f5c","#7a5195","#ef5675","#ffa600")) +
+  ) + scale_color_manual(values = c("#ff8668", "gray70","#5e8aab","#ffce8e")) +
   theme(legend.position = 'bottom')
 
 #+ scale_color_brewer(palette = "Dark2")
@@ -216,8 +250,6 @@ plot1 + plot2
 
 
 ```{r}
-source("helper_functions.R")
-
 cluster_1 <- enrichment_plot(data = t, id = 1)
 cluster_2 <- enrichment_plot(data = t, id = 2)
 cluster_3 <- enrichment_plot(data = t, id = 3)
