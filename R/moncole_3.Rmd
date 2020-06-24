@@ -1,0 +1,212 @@
+---
+title: "moncole_3"
+author: "Stefan Filges"
+date: "2020 M05 20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages, message=FALSE, warning=FALSE}
+# define the working directory
+working_directory <- "~/GitHub/SingleCellScripts/"
+
+# Packages for main analysis, clustering, data structures etc.
+suppressMessages(library(Seurat, quietly = TRUE))
+suppressMessages(library(mclust, quietly = TRUE))
+suppressMessages(library(monocle3, quietly = TRUE))
+suppressMessages(library(destiny, quietly = TRUE))
+suppressMessages(library(SummarizedExperiment, quietly = TRUE))
+suppressMessages(require(clusterExperiment, quietly = TRUE))
+suppressMessages(library(MAST, quietly = TRUE))
+suppressMessages(library(DESeq2, quietly = TRUE))
+suppressMessages(library(sctransform, quietly = TRUE))
+
+# Packages for data handeling and plotting
+suppressMessages(library(reshape, quietly = TRUE))
+suppressMessages(library(cowplot, quietly = TRUE))
+suppressMessages(library(tidyverse, quietly = TRUE))
+suppressMessages(library(viridis, quietly = TRUE))
+suppressMessages(library(RColorBrewer, quietly = TRUE))
+suppressMessages(library(VennDiagram, quietly = TRUE))
+suppressMessages(library(DT, quietly = TRUE))
+```
+
+## Monocle version 3 (beta version)
+
+```{r monocle_v3, eval=FALSE}
+#load("./Data/seurat_object.Rdata")
+
+# set other directories based on working directory
+figures_dir <- paste(working_directory,"figures/",sep="")
+rdata_dir <- paste(working_directory,"data/Rdata/",sep="")
+
+# load object
+load(file = paste(rdata_dir, 'seurat_object_final.Rdata', sep = ''))
+load(file = paste(rdata_dir, 'cds_monocle2.Rdata', sep = ''))
+
+data <- as(as.matrix(merged_data@assays$RNA@counts),'sparseMatrix')
+
+pd <- merged_data@meta.data
+
+fData  <- data.frame(
+  gene_short_name = row.names(data),
+  row.names = row.names(data)
+)
+
+cds <- monocle3::new_cell_data_set(
+  data,
+  cell_metadata = pd,
+  gene_metadata = fData
+)
+
+cds <- monocle3::preprocess_cds(cds, num_dim = 50)
+
+#cds <- monocle3::align_cds(cds = cds, preprocess_method = "PCA")
+
+cds <- monocle3::reduce_dimension(
+  cds = cds,
+  preprocess_method = "PCA",
+  reduction_method = "UMAP"
+)
+
+cds <- monocle3::cluster_cells(
+  cds = cds,
+  reduction_method = "UMAP",
+  cluster_method = "leiden"
+)
+
+cds <- monocle3::learn_graph(
+  cds = cds,
+  use_partition = FALSE
+)
+
+group_plot <- monocle3::plot_cells(
+  cds = cds,
+  label_groups_by_cluster=FALSE,
+  color_cells_by = "group"
+)
+
+# Save monocle pseudotime
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_3_sample.svg', plot = group_plot, width = 6, height = 6, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_3_sample.pdf', plot = group_plot, width = 6, height = 6, device = "pdf")
+
+monocle3::plot_cells(
+  cds,
+  color_cells_by = "partition"
+)
+
+# a helper function to identify the root principal points:
+#get_earliest_principal_node <- function(cds, bin="xenograft-WT"){
+#  cell_ids <- which(colData(cds)[, "group"] == bin)
+#  closest_vertex <-
+#  cds@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
+#  closest_vertex <- as.matrix(closest_vertex[colnames(cds), ])
+#  root_pr_nodes <-
+#  igraph::V(principal_graph(cds)[["UMAP"]])$name[as.numeric(names
+#  (which.max(table(closest_vertex[cell_ids,]))))]
+#  
+#  root_pr_nodes
+#}
+cds <- order_cells(
+  cds = cds, 
+  root_cells = NULL,
+  reduction_method = "UMAP"
+)
+#cds <- monocle3::order_cells(cds, root_pr_nodes=get_earliest_principal_node(cds))
+
+dim_plot_monocle <- monocle3::plot_cells(
+  cds,
+  color_cells_by = "group",
+  group_label_size = 4,
+  label_groups_by_cluster=TRUE,
+  label_leaves=TRUE,
+  label_branch_points=TRUE
+)
+
+dim_plot_monocle
+
+pseudotime <- monocle3::plot_cells(
+  cds,
+  color_cells_by = "pseudotime",
+  label_cell_groups=FALSE,
+  label_leaves=FALSE,
+  label_branch_points=FALSE,
+  graph_label_size=1.5
+)
+
+pseudotime
+
+# Save monocle pseudotime
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_3_pseudotime.svg', plot = pseudotime, width = 6, height = 6, device = "svg")
+ggplot2::ggsave(filename = '~/GitHub/SingleCellScripts/figures/monocle_3_pseudotime.pdf', plot = pseudotime, width = 6, height = 6, device = "pdf")
+
+pr_graph_test <- monocle3::graph_test(cds, k = 3, cores = 2)
+
+# Print no. of differentially expressed genes
+n_DE_genes <- nrow(subset(pr_graph_test, q_value < 0.01))
+print(paste("Number of DE genes over the trajectory: ", n_DE_genes, sep = ""))
+
+# Select top 100 differentially expressed genes based on q value (adjusted p value)
+top100 <- dplyr::add_rownames(pr_graph_test) %>%
+  dplyr::arrange(plyr::desc(morans_test_statistic), plyr::desc(-q_value)) %>% 
+  head(100)
+top100 <- top100$rowname
+
+# Save cds file as Rdata object
+save(cds, file = "cds.Rdata")
+
+# 3D-plot
+cds_3d <- reduce_dimension(cds, reduction_method = "UMAP", max_components = 3)
+cds_3d <- cluster_cells(cds_3d, reduction_method = "UMAP", cluster_method = "leiden")
+cds_3d <- learn_graph(cds_3d,use_partition = FALSE)
+cds_3d_plot_obj <- plot_cells_3d(cds_3d, color_cells_by = "group")
+
+# Extract meta data for each cell (barcode)
+point.data <- pseudotime$data
+# Sort data by pseudotime
+point.data <- point.data[order(point.data$cell_color),]
+
+
+#cds_subset <- cds[top100,]
+
+#expression_matrix <- t(cds_subset@assayData$exprs)[rownames(point.data),]
+
+# Plot individual genes acroos pseudotime
+#data_subset <- cbind(expression_matrix, point.data)
+#plot <- ggplot(data = data_subset, mapping = aes(x = cell_color, y = IL24)) + 
+#  geom_point(mapping = aes(color = group)) +
+#  geom_smooth(se=FALSE, method="loess", span=0.5, color = "black")
+  
+#plot
+
+
+#km<- kmeans(x = t(as.matrix(expression_matrix)),centers = 4)
+
+# red: scf FD - #F8766D
+# grÃ¼n: scf WT - #7CAE00
+# cyan: xen FD - #00BFC4
+# violett: xen WT - #C77CFF
+
+#col_vec <- point.data$orig.ident %>% 
+#  dplyr::recode(xFD = "#00BFC4", FD = "#F8766D", WT = "#7CAE00", xWT = "#C77CFF")
+
+#gplots::heatmap.2(
+#  x = t(as.matrix(expression_matrix)),
+#  labCol = FALSE, 
+#  dendrogram = "none",
+#  trace = "none",
+#  col = viridis::magma(256),
+#  ColSideColors=as.character(col_vec),
+#  RowSideColors=as.character(km$cluster),
+#  key = FALSE
+#)
+```
+
+# Session info
+
+```{r sessionInfo}
+sessionInfo()
+```

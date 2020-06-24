@@ -108,20 +108,24 @@ colData(scaffolds.sce)$sample <- as.character(
   merged_data@meta.data$group
 )
 
-sce <- slingshot(
+sce <- slingshot::slingshot(
   data = scaffolds.sce,
   reducedDim = 'UMAP',
-  clusterLabels = 'sample'
+  clusterLabels = 'group'
 )
 
-col = brewer.pal(9,'Set1')[sce$sample]
+
+col = data.frame(group = levels(factor(sce$group)), color = brewer.pal(4,'Set1'))
+plot_data <- reducedDims(sce)$UMAP
 
 colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
 plotcol <- colors[cut(sce$slingPseudotime_1, breaks=100)]
 
 pdf(file = paste(figures_dir, 'slingshot_trajectory.pdf', sep = ''), width = 9, height = 6)
+
 plot(reducedDims(sce)$UMAP, col = plotcol, pch=16, asp = 1, frame.plot=TRUE)
-lines(SlingshotDataSet(sce), lwd = 3, col = 'black')
+lines(slingshot::SlingshotDataSet(sce), lwd = 3, col = 'black')
+
 dev.off()
 ```
 
@@ -132,7 +136,7 @@ expression <- t(as.data.frame(merged_data@assays$RNA@data))
 groups <- data.frame(merged_data@meta.data$group)
 rownames(groups) <- rownames(merged_data@meta.data)
 
-space <- reduce_dimensionality(
+space <- SCORPIUS::reduce_dimensionality(
   x = expression,
   dist = 'pearson',
   ndim = 3
@@ -141,7 +145,7 @@ space <- reduce_dimensionality(
 trajectory <- infer_trajectory(space)
 
 pdf(file = paste(figures_dir, 'scorpius_trajectory.pdf', sep = ''), width = 9, height = 6)
-draw_trajectory_plot(
+SCORPIUS::draw_trajectory_plot(
   space = space, 
   progression_group = groups$merged_data,
   contour = TRUE,

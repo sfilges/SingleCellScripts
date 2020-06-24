@@ -60,9 +60,18 @@ suppressMessages(library(DT, quietly = TRUE))
 
 filter_cell_cycle = FALSE
 
-load("./Data/seurat_object.Rdata")
+# define the working directory
+working_directory <- "~/GitHub/SingleCellScripts/"
 
-markers <- FindAllMarkers(
+# set other directories based on working directory
+figures_dir <- paste(working_directory,"figures/",sep="")
+rdata_dir <- paste(working_directory,"data/Rdata/",sep="")
+
+# load object
+seurat_object <- paste(rdata_dir, "seurat_object_final.Rdata", sep = "")
+load(seurat_object)
+
+markers <- Seurat::FindAllMarkers(
   object = merged_data,
   min.pct = 0.1,
   logfc.threshold = 1
@@ -84,14 +93,16 @@ Seurat::DoHeatmap(
     option = 'plasma'
 )
 
-volcano_plot <- function(data){
-  plt <- ggplot(data, aes(x = avg_logFC, y = -log10(p_val_adj)))+
-    geom_point()
-  
-  plot(plt)
-}
+Seurat::DoHeatmap(
+  object = merged_data,
+  features = top5$gene, 
+  group.by = "group"
+) + 
+  Seurat::NoLegend() +
+  viridis::scale_fill_viridis(
+    option = 'plasma'
+)
 
-#volcano_plot(markers)
 ```
 
 ## Genes upregulated in adipogenesis
@@ -104,8 +115,11 @@ this gene set using a heatmap. Many genes were not expressed and therefore omitt
 from the plot.
 
 ```{r heatmap_adipogenesis, fig.width=10, fig.height=8, message=FALSE}
+
+database <- paste(working_directory, 'data/MSigDB/', sep = '')
+
 adipo_markers <- read_delim(
-  file = "MSigDB/hallmark_genes_upregulated_during_adipogenesis.txt",
+  file = paste(database, "hallmark_genes_upregulated_during_adipogenesis.txt", sep = ''),
   delim = "\t",
   col_names = c("gene")
 )

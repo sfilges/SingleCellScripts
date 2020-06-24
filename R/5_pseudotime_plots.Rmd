@@ -157,7 +157,7 @@ t <- tibble(
 readr::write_csv2(t, path = '~/GitHub/SingleCellScripts/data/gene_lists/diff_genes_over_pseudotime_top_1500_q_0.01.csv')
 ```
 
-```{r}
+```{r, eval = FALSE}
 cds_time <- cds_subset[,order(cds_subset$Pseudotime)]
 
 # red: scf FD - #F8766D
@@ -198,7 +198,7 @@ NMF::aheatmap(
 
 ## Plot differentially expressed genes in pseudotime
 
-```{r}
+```{r, eval = FALSE}
 diff_test_res <- diff_test_res %>% 
   dplyr::filter(qval < 0.01) %>%
   dplyr::arrange(qval)
@@ -210,18 +210,26 @@ diff_test_res <- diff_test_res %>%
 HDAC1_TARGETS_UP <- read_delim(paste(working_directory,'data/MSigDB/SENESE_HDAC1_TARGETS_UP.txt',sep=''), delim = ' ')
 HDAC3_TARGETS_UP <- read_delim(paste(working_directory,'data/MSigDB/SENESE_HDAC3_TARGETS_UP.txt',sep=''), delim = ' ')
 SATB1_TARGETS_UP <- read_delim(paste(working_directory,'data/MSigDB/HAN_SATB1_TARGETS_UP.txt',sep=''), delim = ' ')
+SILENCED_BY_METHYLATION_UP <- read_delim(paste(working_directory,'data/MSigDB/HELLER_HDAC_TARGETS_SILENCED_BY_METHYLATION_UP.txt',sep=''), delim = ' ')
+
 
 
 my_genes <- t %>% dplyr::filter(cluster == 2)
-my_genes <- my_genes[my_genes$gene %in% SATB1_TARGETS_UP$HAN_SATB1_TARGETS_UP,]
-
+my_genes <- my_genes[my_genes$gene %in% SILENCED_BY_METHYLATION_UP$HELLER_HDAC_TARGETS_SILENCED_BY_METHYLATION_UP,]
 cds_subset <- cds[my_genes$gene[1:5],]
 
-#markers_to_plot <- t %>% dplyr::group_by(cluster) %>% summarise(first = first(gene)) 
-#cds_subset <- cds[markers_to_plot$first,]
+
+#my_genes <- c('IL24', 'SERPINE1', 'GRN', 'NAMPT')
+#my_genes <- c('TGFB1', 'CXCL8', 'IL1B', 'FLT1', 'IL6R')
+my_genes <- c('CD44', 'SERPINB8', 'SLC16A1', 'CEBPD')
+#my_genes <- c('CLU', 'OSMR', 'STAT1', 'BIN1')
+#my_genes <- c('IL6', 'PIAS3', 'STAT6', 'IFI6', 'IFI27')
 
 
-my_genes <- c('IL6', 'MDM2')
+my_genes <- c('CD274','IFI44', 'OASL', 'MBD1', 'TRIM22')
+
+
+my_genes <- c('ATRX')
 cds_subset <- cds[my_genes,]
 
 # Plot by pseudotime
@@ -248,8 +256,60 @@ plot2 <- monocle::plot_genes_in_pseudotime(
 plot1 + plot2
 ```
 
+```{r, eval = TRUE}
 
-```{r}
+#my_genes <- c('IL24', 'SERPINE1', 'GRN', 'NAMPT')
+#my_genes <- c('TGFB1', 'CXCL8', 'IL1B', 'FLT1', 'IL6R')
+#my_genes <- c('CD44', 'SERPINB8', 'SLC16A1', 'CEBPD')
+#my_genes <- c('CLU', 'OSMR', 'STAT1', 'BIN1')
+#my_genes <- c('IL6', 'PIAS3', 'STAT6', 'IFI6', 'IFI27')
+#my_genes <- c('CD274','IFI44', 'OASL', 'MBD1', 'TRIM22')
+
+my_genes <- c('IL24', 'SERPINE1', 'GRN', 'NAMPT', 'TGFB1', 'CXCL8', 'IL1B', 
+              'FLT1', 'IL6R','CD44', 'SERPINB8', 'SLC16A1', 'CEBPD', 'CLU', 
+              'OSMR', 'STAT1', 'BIN1', 'IL6', 'PIAS3', 'STAT6', 'IFI6', 
+              'IFI27', 'CD274','IFI44', 'OASL', 'MBD1', 'TRIM22', 'KDM5A', 
+              'RUNX2', 'EPAS1', 'HDAC1', 'HDAC2', 'HDAC3', 'HDAC4', 'HDAC5', 
+              'HDAC6', 'HDAC7', 'HDAC8', 'HDAC9', 'STAT2', 'STAT3', 'STAT5A', 
+              'STAT5B','PIAS1', 'PIAS2', 'PIAS3', 'PIAS4', 'EZH2', 'SUZ12')
+
+
+for(gene in my_genes){
+  
+  fplot <- Seurat::FeaturePlot(
+    object = merged_data,
+    features = gene
+  )
+  
+  vln_plot <- Seurat::VlnPlot(
+    object = merged_data,
+    features = gene,
+    slot = "counts",
+    log = TRUE,
+    group.by = "group"
+  )
+
+  ggplot2::ggsave(
+    filename = paste(figures_dir,'feature_plots/', gene, '_feature_plot.png', sep = ''),
+    plot = fplot, 
+    width = 6, 
+    height = 6, 
+    device = "png"
+  )
+  
+  ggplot2::ggsave(
+    filename = paste(figures_dir,'feature_plots/', gene, '_violin_plot.png', sep = ''),
+    plot = vln_plot, 
+    width = 6, 
+    height = 6, 
+    device = "png"
+  )
+}
+
+```
+
+
+```{r, eval = FALSE}
 cluster_1 <- enrichment_plot(data = t, id = 1)
 cluster_2 <- enrichment_plot(data = t, id = 2)
 cluster_3 <- enrichment_plot(data = t, id = 3)
@@ -273,5 +333,40 @@ ggplot2::ggsave(filename = paste(figures_dir, 'enrichment_cluster_4.pdf', sep = 
 
 ```
 
+## Moncole 3
 
+```{r moncole3, eval = FALSE}
+library(monocle3)
+library(Seurat)
+library(SeuratData)
+library(SeuratWrappers)
+library(ggplot2)
+library(patchwork)
+library(magrittr)
+
+integrated <- ScaleData(merged_data)
+integrated <- RunPCA(integrated)
+integrated <- RunUMAP(integrated, dims = 1:30, reduction.name = "UMAP")
+integrated <- FindNeighbors(integrated, dims = 1:30)
+integrated <- FindClusters(integrated)
+DimPlot(integrated, group.by = c("orig.ident", "ident"))
+
+
+cds <- as.cell_data_set(integrated)
+cds <- cluster_cells(cds)
+cds <- learn_graph(cds,use_partition = FALSE)
+cds <- order_cells(cds)
+
+
+p1 <- plot_cells(cds, color_cells_by = "pseudotime", label_cell_groups = FALSE, label_leaves = FALSE, 
+    label_branch_points = FALSE)
+p2 <- plot_cells(cds, color_cells_by = "group", show_trajectory_graph = TRUE)
+wrap_plots(p1, p2)
+
+
+
+
+
+
+```
 
