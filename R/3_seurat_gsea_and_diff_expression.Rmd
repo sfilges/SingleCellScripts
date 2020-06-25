@@ -48,6 +48,7 @@ suppressMessages(require(clusterExperiment, quietly = TRUE))
 suppressMessages(library(MAST, quietly = TRUE))
 suppressMessages(library(DESeq2, quietly = TRUE))
 suppressMessages(library(sctransform, quietly = TRUE))
+suppressMessages(library(bigmemory, quietly = TRUE))
 
 # Packages for data handeling and plotting
 suppressMessages(library(reshape, quietly = TRUE))
@@ -58,19 +59,21 @@ suppressMessages(library(RColorBrewer, quietly = TRUE))
 suppressMessages(library(VennDiagram, quietly = TRUE))
 suppressMessages(library(DT, quietly = TRUE))
 
+# Set to TRUE if cell cycle effects were regressed out previously
 filter_cell_cycle = FALSE
 
 # define the working directory
-working_directory <- "~/GitHub/SingleCellScripts/"
+working_directory <- '~/Documents/GitHub/SingleCellScripts/'
 
 # set other directories based on working directory
-figures_dir <- paste(working_directory,"figures/",sep="")
-rdata_dir <- paste(working_directory,"data/Rdata/",sep="")
+figures_dir <- paste(working_directory, 'figures/', sep = '')
+rdata_dir <- paste(working_directory, 'data/Rdata/', sep = '')
 
 # load object
-seurat_object <- paste(rdata_dir, "seurat_object_final.Rdata", sep = "")
+seurat_object <- paste(rdata_dir, 'seurat_object_final.Rdata', sep = '')
 load(seurat_object)
 
+# Find markers (differentially expressed genes) for each of the identity classes in a dataset
 markers <- Seurat::FindAllMarkers(
   object = merged_data,
   min.pct = 0.1,
@@ -178,6 +181,7 @@ if(filter_cell_cycle){
     ident.2 = 'scf-FD',
     test.use = 'wilcox',
     min.cells.feature = 10,
+    logfc.threshold = 0.1,
     latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
     min.pct = 0.05,
     group.by = 'group'
@@ -189,8 +193,9 @@ if(filter_cell_cycle){
     ident.2 = 'scf-FD',
     test.use = 'wilcox',
     min.cells.feature = 10,
+    logfc.threshold = 0.1,
     latent.var = c('nFeature_RNA'),
-    min.pct = 0.05,
+    min.pct = 0.025,
     group.by = 'group'
   )
 }
@@ -229,6 +234,7 @@ if(filter_cell_cycle){
     ident.2 = 'xenograft-FD',
     test.use = 'wilcox',
     min.cells.feature = 10,
+    logfc.threshold = 0.1,
     latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
     min.pct = 0.05,
     group.by = 'group'
@@ -240,8 +246,9 @@ if(filter_cell_cycle){
     ident.2 = 'xenograft-FD',
     test.use = 'wilcox',
     min.cells.feature = 10,
+    logfc.threshold = 0.1,
     latent.var = c('nFeature_RNA'),
-    min.pct = 0.05,
+    min.pct = 0.025,
     group.by = 'group'
   )
 }
@@ -269,158 +276,4 @@ Seurat::DoHeatmap(
   viridis::scale_fill_viridis(
     option = 'plasma'
   )
-```
-
-### Genes differentially regulated between scf-FD and xen-FD
-```{r scf-FD-vs-xen-FD, fig.width=6, fig.height=4, message=FALSE, warning=FALSE}
-if(filter_cell_cycle){
-  markers.scfFD_vs_xenFD <- Seurat::FindMarkers(
-    merged_data, 
-    ident.1 = 'scf-FD', 
-    ident.2 = 'xenograft-FD',
-    test.use = 'wilcox',
-    min.cells.feature = 10,
-    latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
-    min.pct = 0.05,
-    group.by = 'group'
-  )
-} else {
-  markers.scfFD_vs_xenFD <- Seurat::FindMarkers(
-    merged_data, 
-    ident.1 = 'scf-FD', 
-    ident.2 = 'xenograft-FD',
-    test.use = 'wilcox',
-    min.cells.feature = 10,
-    latent.var = c('nFeature_RNA'),
-    min.pct = 0.05,
-    group.by = 'group'
-  )
-}
-
-# Select and plot genes with log2-fold-change >= 1 and order genes by log2 fold change
-# for plotting in the heatmap
-marker_selection = markers.scfFD_vs_xenFD[abs(markers.scfFD_vs_xenFD$avg_logFC) >= 0.2, ]
-marker_selection = marker_selection[order(marker_selection$avg_logFC),]
-
-markers.scfFD_vs_xenFD <- as_tibble(
-  x = markers.scfFD_vs_xenFD,
-  rownames = 'genes'
-)
-
-# Output markers as interactive data table
-DT::datatable(markers.scfFD_vs_xenFD, options = list(pageLength = 5))
-
-# Plot most differentially expressed markers in heatmap
-Seurat::DoHeatmap(
-  object = merged_data,
-  features = rownames(marker_selection),
-  group.by = "group"
-  ) + 
-  Seurat::NoLegend() + 
-  viridis::scale_fill_viridis(
-    option = 'plasma'
-  )
-```
-
-### Genes differentially regulated between scf-WT and xen-WT
-```{r scf-WT-vs-xen-WT, fig.width=6, fig.height=4, message=FALSE, warning=FALSE}
-if(filter_cell_cycle){
-  markers.scfWT_vs_xenWT <- Seurat::FindMarkers(
-    merged_data, 
-    ident.1 = 'scf-WT', 
-    ident.2 = 'xenograft-WT',
-    test.use = 'wilcox',
-    min.cells.feature = 10,
-    latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
-    min.pct = 0.05,
-    group.by = 'group'
-  )
-} else {
-  markers.scfWT_vs_xenWT <- Seurat::FindMarkers(
-    merged_data, 
-    ident.1 = 'scf-FD', 
-    ident.2 = 'xenograft-FD',
-    test.use = 'wilcox',
-    min.cells.feature = 10,
-    latent.var = c('nFeature_RNA'),
-    min.pct = 0.05,
-    group.by = 'group'
-  )
-}
-
-# Select and plot genes with log2-fold-change >= 1 and order genes by log2 fold change
-# for plotting in the heatmap
-marker_selection = markers.scfWT_vs_xenWT[abs(markers.scfFD_vs_xenFD$avg_logFC) >= 0.2, ]
-marker_selection = marker_selection[order(marker_selection$avg_logFC),]
-
-markers.scfWT_vs_xenWT <- as_tibble(
-  x = markers.scfWT_vs_xenWT,
-  rownames = 'genes'
-)
-
-# Output markers as interactive data table
-DT::datatable(markers.scfWT_vs_xenWT, options = list(pageLength = 5))
-
-# Plot most differentially expressed markers in heatmap
-Seurat::DoHeatmap(
-  object = merged_data,
-  features = rownames(marker_selection),
-  group.by = "group"
-  ) + 
-  Seurat::NoLegend() + 
-  viridis::scale_fill_viridis(
-    option = 'plasma'
-  )
-```
-
-## Gene list overlaps
-
-```{r vennDiagrams, eval=FALSE}
-library(VennDiagram)
-library(RColorBrewer)
-
-set1 <- markers.scfWT_vs_scfFD$genes
-set2 <- markers.xenWT_vs_xenFD$genes
-set3 <- markers.scfFD_vs_xenFD$genes
-
-myCol <- brewer.pal(3, "Pastel2")
-
-# Chart
-venn.diagram(
-        x = list(set1, set2, set3),
-        category.names = c("scf.v.scf" , "xen.v.xen" , "scf.v.xen"),
-        filename = 'figures/venn_diagramm.png',
-        output=FALSE,
-        
-        # Output features
-        imagetype="png" ,
-        height = 480 , 
-        width = 480 , 
-        resolution = 300,
-        compression = "lzw",
-        
-        # Circles
-        lwd = 2,
-        lty = 'blank',
-        fill = myCol,
-        
-        # Numbers
-        cex = .6,
-        fontface = "bold",
-        fontfamily = "sans",
-        
-        # Set names
-        cat.cex = 0.6,
-        cat.fontface = "bold",
-        cat.default.pos = "outer",
-        cat.pos = c(-27, 27, 135),
-        cat.dist = c(0.055, 0.055, 0.085),
-        cat.fontfamily = "sans",
-        rotation = 1
-)
-
-set1 <- markers.scfWT_vs_scfFD$genes
-set2 <- markers.xenWT_vs_xenFD$genes
-
-common.markers <- dplyr::intersect(set1, set2)
 ```
