@@ -102,7 +102,6 @@ Seurat::DoHeatmap(
   viridis::scale_fill_viridis(
     option = 'plasma'
 )
-
 ```
 
 ## Genes upregulated in adipogenesis
@@ -177,7 +176,8 @@ if(filter_cell_cycle){
     merged_data, 
     ident.1 = 'scf-WT', 
     ident.2 = 'scf-FD',
-    test.use = 'MAST',
+    test.use = 'wilcox',
+    min.cells.feature = 10,
     latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
     min.pct = 0.05,
     group.by = 'group'
@@ -187,7 +187,8 @@ if(filter_cell_cycle){
     merged_data, 
     ident.1 = 'scf-WT', 
     ident.2 = 'scf-FD',
-    test.use = 'MAST',
+    test.use = 'wilcox',
+    min.cells.feature = 10,
     latent.var = c('nFeature_RNA'),
     min.pct = 0.05,
     group.by = 'group'
@@ -196,7 +197,7 @@ if(filter_cell_cycle){
 
 # Select and plot genes with log2-fold-change >= 1 and order genes by log2 fold change
 # for plotting in the heatmap
-marker_selection = markers.scfWT_vs_scfFD[abs(markers.scfWT_vs_scfFD$avg_logFC) >= 1, ]
+marker_selection = markers.scfWT_vs_scfFD[abs(markers.scfWT_vs_scfFD$avg_logFC) >= 0.2, ]
 marker_selection = marker_selection[order(marker_selection$avg_logFC),]
 
 markers.scfWT_vs_scfFD <- as_tibble(
@@ -226,7 +227,8 @@ if(filter_cell_cycle){
     merged_data, 
     ident.1 = 'xenograft-WT', 
     ident.2 = 'xenograft-FD',
-    test.use = 'MAST',
+    test.use = 'wilcox',
+    min.cells.feature = 10,
     latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
     min.pct = 0.05,
     group.by = 'group'
@@ -236,7 +238,8 @@ if(filter_cell_cycle){
     merged_data, 
     ident.1 = 'xenograft-WT', 
     ident.2 = 'xenograft-FD',
-    test.use = 'MAST',
+    test.use = 'wilcox',
+    min.cells.feature = 10,
     latent.var = c('nFeature_RNA'),
     min.pct = 0.05,
     group.by = 'group'
@@ -245,7 +248,7 @@ if(filter_cell_cycle){
 
 # Select and plot genes with log2-fold-change >= 1 and order genes by log2 fold change
 # for plotting in the heatmap
-marker_selection = markers.xenWT_vs_xenFD[abs(markers.xenWT_vs_xenFD$avg_logFC) >= 1, ]
+marker_selection = markers.xenWT_vs_xenFD[abs(markers.xenWT_vs_xenFD$avg_logFC) >= 0.2, ]
 marker_selection = marker_selection[order(marker_selection$avg_logFC),]
 
 markers.xenWT_vs_xenFD <- as_tibble(
@@ -275,7 +278,8 @@ if(filter_cell_cycle){
     merged_data, 
     ident.1 = 'scf-FD', 
     ident.2 = 'xenograft-FD',
-    test.use = 'MAST',
+    test.use = 'wilcox',
+    min.cells.feature = 10,
     latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
     min.pct = 0.05,
     group.by = 'group'
@@ -285,7 +289,8 @@ if(filter_cell_cycle){
     merged_data, 
     ident.1 = 'scf-FD', 
     ident.2 = 'xenograft-FD',
-    test.use = 'MAST',
+    test.use = 'wilcox',
+    min.cells.feature = 10,
     latent.var = c('nFeature_RNA'),
     min.pct = 0.05,
     group.by = 'group'
@@ -294,7 +299,7 @@ if(filter_cell_cycle){
 
 # Select and plot genes with log2-fold-change >= 1 and order genes by log2 fold change
 # for plotting in the heatmap
-marker_selection = markers.scfFD_vs_xenFD[abs(markers.scfFD_vs_xenFD$avg_logFC) >= 1, ]
+marker_selection = markers.scfFD_vs_xenFD[abs(markers.scfFD_vs_xenFD$avg_logFC) >= 0.2, ]
 marker_selection = marker_selection[order(marker_selection$avg_logFC),]
 
 markers.scfFD_vs_xenFD <- as_tibble(
@@ -324,7 +329,8 @@ if(filter_cell_cycle){
     merged_data, 
     ident.1 = 'scf-WT', 
     ident.2 = 'xenograft-WT',
-    test.use = 'MAST',
+    test.use = 'wilcox',
+    min.cells.feature = 10,
     latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
     min.pct = 0.05,
     group.by = 'group'
@@ -334,7 +340,8 @@ if(filter_cell_cycle){
     merged_data, 
     ident.1 = 'scf-FD', 
     ident.2 = 'xenograft-FD',
-    test.use = 'MAST',
+    test.use = 'wilcox',
+    min.cells.feature = 10,
     latent.var = c('nFeature_RNA'),
     min.pct = 0.05,
     group.by = 'group'
@@ -343,7 +350,7 @@ if(filter_cell_cycle){
 
 # Select and plot genes with log2-fold-change >= 1 and order genes by log2 fold change
 # for plotting in the heatmap
-marker_selection = markers.scfWT_vs_xenWT[abs(markers.scfFD_vs_xenFD$avg_logFC) >= 1, ]
+marker_selection = markers.scfWT_vs_xenWT[abs(markers.scfFD_vs_xenFD$avg_logFC) >= 0.2, ]
 marker_selection = marker_selection[order(marker_selection$avg_logFC),]
 
 markers.scfWT_vs_xenWT <- as_tibble(
@@ -416,733 +423,4 @@ set1 <- markers.scfWT_vs_scfFD$genes
 set2 <- markers.xenWT_vs_xenFD$genes
 
 common.markers <- dplyr::intersect(set1, set2)
-```
-
-# GSEA and GO term analysis
-
-```{r, echo=FALSE}
-##### Customize enricher function to match msigdbr results:
-
-# We need to modifiy the enrichment analysis function to match more  closely the algorythm used in the msigdb website.
-# The main difference is the definition of the universe (background), which in the GSEA web tool is defined as all the 
-# genes in the NCBI database with a common gene name annotation, while in this package it is defined as all the genes that
-# take part in any of the categories of the database analyzed.
-
-enricher_custom <- function(
-  gene,
-  pvalueCutoff,
-  pAdjustMethod = "BH",
-  universe = NULL,
-  minGSSize = 10,
-  maxGSSize = 500,
-  qvalueCutoff = 0.2,
-  USER_DATA) {
-  
-    gene <- as.character(unique(gene))
-    qExtID2TermID <- EXTID2TERMID(gene, USER_DATA)
-    qTermID <- unlist(qExtID2TermID)
-    
-    if (is.null(qTermID)) {
-      message("--> No gene can be mapped....")
-      p2e <- get("PATHID2EXTID", envir = USER_DATA)
-      sg <- unlist(p2e[1:10])
-      sg <- sample(sg, min(length(sg), 6))
-      message("--> Expected input gene ID: ", paste0(sg, collapse = ","))
-      message("--> return NULL...")
-      return(NULL)
-    }
-    qExtID2TermID.df <- data.frame(
-      extID = rep(names(qExtID2TermID),
-                  times = lapply(qExtID2TermID, length)),
-      termID = qTermID
-    )
-    
-    qExtID2TermID.df <- unique(qExtID2TermID.df)
-    qTermID2ExtID <- with(
-      qExtID2TermID.df, split(as.character(extID),as.character(termID))
-    )
-    
-    extID <- ALLEXTID(USER_DATA)
-    
-    if (missing(universe)) 
-      universe <- NULL
-    if (!is.null(universe)) {
-      extID <- as.character(universe)
-    }
-    
-    qTermID2ExtID <- lapply(qTermID2ExtID, intersect, extID)
-    qTermID <- unique(names(qTermID2ExtID))
-    termID2ExtID <- TERMID2EXTID(qTermID, USER_DATA)
-    termID2ExtID <- lapply(termID2ExtID, intersect, extID)
-    geneSets <- termID2ExtID
-    idx <- get_geneSet_index(termID2ExtID, minGSSize, maxGSSize)
-    
-    if (sum(idx) == 0) {
-      msg <- paste("No gene set have size >", minGSSize, "...")
-      message(msg)
-      message("--> return NULL...")
-      return(NULL)
-    }
-    
-    termID2ExtID <- termID2ExtID[idx]
-    qTermID2ExtID <- qTermID2ExtID[idx]
-    qTermID <- unique(names(qTermID2ExtID))
-    
-    k <- sapply(qTermID2ExtID, length)
-    k <- k[qTermID]
-    M <- sapply(termID2ExtID, length)
-    M <- M[qTermID]
-    N <- rep(length(extID), length(M))
-    n <- rep(length(qExtID2TermID), length(M))
-    args.df <- data.frame(
-      numWdrawn = k - 1, 
-      numW = M, 
-      numB = N - M, 
-      numDrawn = n
-    )
-    
-    pvalues <- apply(
-      args.df, 1, function(n) phyper(n[1], n[2], n[3], n[4], lower.tail = FALSE)
-    )
-    
-    GeneRatio <- apply(
-      data.frame(a = k, b = n), 1, function(x) paste(x[1], "/", x[2], sep = "", collapse = "")
-    )
-    
-    BgRatio <- apply(
-      data.frame(a = M, b = N), 1, function(x) paste(x[1], "/", x[2], sep = "", collapse = "")
-    )
-    
-    Over <- data.frame(
-      ID = as.character(qTermID), 
-      GeneRatio = GeneRatio, 
-      BgRatio = BgRatio, 
-      pvalue = pvalues,
-      stringsAsFactors = FALSE
-    )
-    
-    p.adj <- p.adjust(Over$pvalue, method = pAdjustMethod)
-    
-    qobj <- tryCatch(qvalue(p = Over$pvalue, 
-                            lambda = 0.05,
-                            pi0.method = "bootstrap"),
-                     error = function(e) NULL)
-    
-    if (class(qobj) == "qvalue") {
-      qvalues <- qobj$qvalues
-    }
-    else {
-      qvalues <- NA
-    }
-    
-    geneID <- sapply(qTermID2ExtID, function(i) paste(i, collapse = "/"))
-    geneID <- geneID[qTermID]
-    
-    Over <- data.frame(
-      Over,
-      p.adjust = p.adj,
-      qvalue = qvalues,
-      geneID = geneID, 
-      Count = k, 
-      stringsAsFactors = FALSE
-    )
-    
-    Description <- TERM2NAME(qTermID, USER_DATA)
-    
-    if (length(qTermID) != length(Description)) {
-      idx <- qTermID %in% names(Description)
-      Over <- Over[idx, ]
-    }
-    
-    Over$Description <- Description
-    nc <- ncol(Over)
-    Over <- Over[, c(1, nc, 2:(nc - 1))]
-    Over <- Over[order(pvalues), ]
-    Over$ID <- as.character(Over$ID)
-    Over$Description <- as.character(Over$Description)
-    row.names(Over) <- as.character(Over$ID)
-    
-    x <- new("enrichResult", result = Over, pvalueCutoff = pvalueCutoff, 
-             pAdjustMethod = pAdjustMethod, qvalueCutoff = qvalueCutoff, 
-             gene = as.character(gene), universe = extID, geneSets = geneSets, 
-             organism = "UNKNOWN", keytype = "UNKNOWN", ontology = "UNKNOWN", 
-             readable = FALSE)
-    
-    return(x)
-}
-
-enricher_edit<-function(gene, pvalueCutoff = 0.05, pAdjustMethod = "BH", universe, 
-                         minGSSize = 10, maxGSSize = 500, qvalueCutoff = 0.2, TERM2GENE, 
-                         TERM2NAME = NA) 
-{
-  USER_DATA <- build_Anno(TERM2GENE, TERM2NAME)
-  enricher_custom(gene = gene, pvalueCutoff = pvalueCutoff, 
-                  pAdjustMethod = pAdjustMethod, universe = universe, minGSSize = minGSSize, 
-                  maxGSSize = maxGSSize, qvalueCutoff = qvalueCutoff, USER_DATA = USER_DATA)
-}
-
-body(enricher)<-body(enricher_edit)
-
-environment(enricher_custom)<-environment(clusterProfiler:::enricher_internal)
-```
-
-Next we perform gene set enrichment (GSEA) and gene ontology (GO) analysis. We
-will look at four reference databases:
-
-- Gene ontology, biological processes (GO_BP)
-- Reactome pathways 
-- Hallmarks gene sets represent specific well-defined biological states or processes and display coherent expression
-- Transcription factor targets (TFT)
-
-We will plot the top 30 enrichments for each of the four groups for each
-comparison made above.
-
-## Scaffold WT vs. scaffold FD {.tabset}
-
-```{r load_GO_data, message=FALSE}
-GO_BP <- read.gmt("MSigDB/c5.bp.v7.0.symbols.gmt")
-Reactome <- read.gmt("MSigDB/c2.cp.reactome.v7.0.symbols.gmt")
-Hallmarks <- read.gmt("MSigDB/h.all.v7.0.symbols.gmt")
-TFT <- read.gmt("MSigDB/c3.tft.v7.0.symbols.gmt")
-
-hgnc_symbols <- read.csv("MSigDB/hgnc.txt", sep = '\t', header=TRUE)
-hgnc_symbols <- hgnc_symbols$Approved.symbol
-
-gene = markers.scfWT_vs_scfFD %>% 
-  dplyr::filter(p_val_adj < 0.01) 
-gene <- gene$genes
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=GO_BP,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-go_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=Hallmarks,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-hallmarks_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=Reactome,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-reactome_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=TFT,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-tft_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-
-custom_dotplot <- function(
-  egmt,
-  showCategory = 20,
-  x.axis = 'GeneRatio',
-  font.size = 7
-  ){
-  
-  data <- egmt@result %>% 
-    dplyr::arrange(qvalue) %>%
-    dplyr::select(-geneID) %>%
-    tidyr::separate(GeneRatio, c("top", "bottom"), sep = "/") %>%
-    dplyr::mutate(GeneRatio = as.numeric(top)/as.numeric(bottom))
-  
-  data <- head(data, showCategory)
-  
-  data$category <- factor(data$ID, levels = rev(data$ID))
-  
-  if(x.axis == 'GeneRatio') {
-    dp <- ggplot(
-      data = data,
-      mapping = aes(x = GeneRatio, y = category, color = -log10(qvalue))
-    ) +
-      geom_point(aes(size = Count)) + 
-      scale_color_continuous(
-        low="red", high="blue", 
-        name = '-log10(qvalue)', 
-        guide=guide_colorbar(reverse=FALSE)
-        ) +
-      theme_minimal() + 
-      theme(
-        axis.line = element_line(color="black", size = 0.2),
-        axis.title.y = element_blank(),
-        axis.text.y = element_text(size = font.size)
-        ) + guides(size = guide_legend(reverse = TRUE))
-  } else if (x.axis == 'qvalue'){
-    dp <- ggplot(
-      data = data,
-      mapping = aes(x = -log10(qvalue), y = category, color = GeneRatio)
-    ) +
-      geom_point(aes(size = Count)) + 
-      scale_color_continuous(
-        low="red", high="blue", 
-        name = 'GeneRatio', 
-        guide=guide_colorbar(reverse=FALSE)
-        ) +
-      theme_minimal() + 
-      theme(
-        axis.line = element_line(color="black", size = 0.2),
-        axis.title.y = element_blank(),
-        axis.text.y = element_text(size = font.size)
-        ) + guides(size = guide_legend(reverse = TRUE))
-  }
-
-  return(dp)
-}
-
-
-
-```
-
-### Gene ontology
-```{r, echo=FALSE}
-go_plot
-```
-
-### Hallmarks
-```{r, echo=FALSE}
-hallmarks_plot
-```
-
-### Reactome
-```{r, echo=FALSE}
-reactome_plot
-```
-
-### TFT
-```{r, echo=FALSE}
-tft_plot
-```
-
-## Xenograft WT vs. xenograft FD {.tabset}
-
-```{r GO2, message=FALSE}
-gene = markers.xenWT_vs_xenFD %>% 
-  dplyr::filter(p_val_adj < 0.01) 
-gene <- gene$genes
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=GO_BP,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-go_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=Hallmarks,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-hallmarks_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=Reactome,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-reactome_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=TFT,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-tft_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-```
-
-### Gene ontology
-```{r, echo=FALSE}
-go_plot
-```
-
-### Hallmarks
-```{r, echo=FALSE}
-hallmarks_plot
-```
-
-### Reactome
-```{r, echo=FALSE}
-reactome_plot
-```
-
-### TFT
-```{r, echo=FALSE}
-tft_plot
-```
-
-## Scaffold WT vs. xenograft WT {.tabset}
-
-```{r GO_WT_WT, message=FALSE}
-gene = markers.scfWT_vs_xenWT %>% 
-  dplyr::filter(p_val_adj < 0.01) 
-gene <- gene$genes
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=GO_BP,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-go_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=Hallmarks,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-hallmarks_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=Reactome,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-reactome_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=TFT,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-tft_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-```
-
-### Gene ontology
-```{r, echo=FALSE}
-go_plot
-```
-
-### Hallmarks
-```{r, echo=FALSE}
-hallmarks_plot
-```
-
-### Reactome
-```{r, echo=FALSE}
-reactome_plot
-```
-
-### TFT
-```{r, echo=FALSE}
-tft_plot
-```
-
-Next, we look a common markers differentially both in scf-WT vs scf-FD and
-xen-WT vs xen-FD.
-
-## Commonly regulated genes {.tabset}
-
-```{r go_common_markers, message=FALSE, eval=FALSE}
-gene = common.markers
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=GO_BP,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-go_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=Hallmarks,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-hallmarks_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=Reactome,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-reactome_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=TFT,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-tft_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-```
-
-### Gene ontology
-```{r, echo=FALSE}
-go_plot
-```
-
-### Hallmarks
-```{r, echo=FALSE}
-hallmarks_plot
-```
-
-### Reactome
-```{r, echo=FALSE}
-reactome_plot
-```
-
-### TFT
-```{r, echo=FALSE}
-tft_plot
-```
-
-Finally, we look at highly variable genes that are enriched globally, 
-across all samples.
-
-## Markers for highly variable genes {.tabset}
-
-```{r GO3, message=FALSE}
-gene <- VariableFeatures(object = merged_data)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=GO_BP,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-go_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=Hallmarks,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-hallmarks_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=Reactome,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-reactome_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-
-egmt <- enricher(
-  gene,
-  TERM2GENE=TFT,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = 'fdr',
-  minGSSize = NA,
-  maxGSSize = NA,
-  qvalueCutoff = 0.05,
-  universe = hgnc_symbols
-)
-
-tft_plot <- dotplot(
-  egmt,
-  showCategory = 20,
-  font.size = 7
-)
-```
-
-### Gene ontology
-```{r, echo=FALSE}
-go_plot
-```
-
-### Hallmarks
-```{r, echo=FALSE}
-hallmarks_plot
-```
-
-### Reactome
-```{r, echo=FALSE}
-reactome_plot
-```
-
-### TFT
-```{r, echo=FALSE}
-tft_plot
 ```
