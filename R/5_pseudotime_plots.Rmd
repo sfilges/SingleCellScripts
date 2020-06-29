@@ -271,7 +271,8 @@ my_genes <- c('IL24', 'SERPINE1', 'GRN', 'NAMPT', 'TGFB1', 'CXCL8', 'IL1B',
               'IFI27', 'CD274','IFI44', 'OASL', 'MBD1', 'TRIM22', 'KDM5A', 
               'RUNX2', 'EPAS1', 'HDAC1', 'HDAC2', 'HDAC3', 'HDAC4', 'HDAC5', 
               'HDAC6', 'HDAC7', 'HDAC8', 'HDAC9', 'STAT2', 'STAT3', 'STAT5A', 
-              'STAT5B','PIAS1', 'PIAS2', 'PIAS3', 'PIAS4', 'EZH2', 'SUZ12')
+              'STAT5B','PIAS1', 'PIAS2', 'PIAS3', 'PIAS4', 'EZH2', 'SUZ12',
+              'SMARCE1', 'SMARCA5', 'SMARCD1', 'ACTL6A')
 
 
 for(gene in my_genes){
@@ -305,7 +306,6 @@ for(gene in my_genes){
     device = "png"
   )
 }
-
 ```
 
 

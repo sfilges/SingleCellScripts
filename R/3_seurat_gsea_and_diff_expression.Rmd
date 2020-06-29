@@ -48,7 +48,7 @@ suppressMessages(require(clusterExperiment, quietly = TRUE))
 suppressMessages(library(MAST, quietly = TRUE))
 suppressMessages(library(DESeq2, quietly = TRUE))
 suppressMessages(library(sctransform, quietly = TRUE))
-suppressMessages(library(bigmemory, quietly = TRUE))
+#suppressMessages(library(bigmemory, quietly = TRUE))
 
 # Packages for data handeling and plotting
 suppressMessages(library(reshape, quietly = TRUE))
@@ -63,7 +63,7 @@ suppressMessages(library(DT, quietly = TRUE))
 filter_cell_cycle = FALSE
 
 # define the working directory
-working_directory <- '~/Documents/GitHub/SingleCellScripts/'
+working_directory <- '~/GitHub/SingleCellScripts/'
 
 # set other directories based on working directory
 figures_dir <- paste(working_directory, 'figures/', sep = '')
@@ -179,7 +179,7 @@ if(filter_cell_cycle){
     merged_data, 
     ident.1 = 'scf-WT', 
     ident.2 = 'scf-FD',
-    test.use = 'wilcox',
+    test.use = 'MAST',
     min.cells.feature = 10,
     logfc.threshold = 0.1,
     latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
@@ -191,7 +191,7 @@ if(filter_cell_cycle){
     merged_data, 
     ident.1 = 'scf-WT', 
     ident.2 = 'scf-FD',
-    test.use = 'wilcox',
+    test.use = 'MAST',
     min.cells.feature = 10,
     logfc.threshold = 0.1,
     latent.var = c('nFeature_RNA'),
@@ -232,7 +232,7 @@ if(filter_cell_cycle){
     merged_data, 
     ident.1 = 'xenograft-WT', 
     ident.2 = 'xenograft-FD',
-    test.use = 'wilcox',
+    test.use = 'MAST',
     min.cells.feature = 10,
     logfc.threshold = 0.1,
     latent.var = c('nFeature_RNA', 'S.Score', 'G2M.Score'),
@@ -244,8 +244,8 @@ if(filter_cell_cycle){
     merged_data, 
     ident.1 = 'xenograft-WT', 
     ident.2 = 'xenograft-FD',
-    test.use = 'wilcox',
-    min.cells.feature = 10,
+    test.use = 'MAST',
+    min.cells.feature = 3,
     logfc.threshold = 0.1,
     latent.var = c('nFeature_RNA'),
     min.pct = 0.025,
