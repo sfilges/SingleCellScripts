@@ -124,9 +124,9 @@ fd_xen$group <- "xenograft-FD"
 # Merged dataset
 merged_data <- merge(
   x = wt_scf,
-  y = c(wt_xen, fd_scf, fd_xen),
-  add.cell.ids = c('wt-scf', 'wt-xen', 'fd-scf', 'fd-xen'),
-  project = 'scaffold'
+  y = c(wt_xen, fd_scf, fd_xen)
+  #add.cell.ids = c('wt-scf', 'wt-xen', 'fd-scf', 'fd-xen'),
+  #project = 'scaffold'
 )
 
 unique(x = sapply(X = strsplit(x = colnames(
