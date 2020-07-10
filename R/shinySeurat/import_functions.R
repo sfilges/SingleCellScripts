@@ -41,7 +41,7 @@ mergeSeuratObjects <- function(df, min_cells = 5){
   for(i in 1:nrow(df)){
     row <- df[i,]
     
-    print(row)
+    #print(row)
     
     objects_to_merge <- append(
       x = objects_to_merge, 
@@ -54,8 +54,7 @@ mergeSeuratObjects <- function(df, min_cells = 5){
   }
   
   #objects_to_merge <- c(wt_scf,wt_xen, fd_scf, fd_xen)
-  
-  print(objects_to_merge)
+  # print(objects_to_merge)
   
   # Merged dataset
   merged_data <- merge(
@@ -63,10 +62,61 @@ mergeSeuratObjects <- function(df, min_cells = 5){
     y = objects_to_merge[[2:length(objects_to_merge)]]
   )
   
+  # store mitochondrial percentage in object meta data
+  merged_data[["percent.mt"]] <- Seurat::PercentageFeatureSet(
+    object = merged_data, 
+    pattern = "^MT-"
+  )
+  
+  # A list of cell cycle markers, from Tirosh et al, 2015, is loaded with Seurat.  We can
+  # segregate this list into markers of G2/M phase and markers of S phase
+  s.genes <- Seurat::cc.genes$s.genes
+  g2m.genes <- Seurat::cc.genes$g2m.genes
+  
+  # Assign cell cycle score to genes, which will be stored in the Seurat object
+  # metdata
+  merged_data <- Seurat::CellCycleScoring(
+    object = merged_data,
+    s.features = s.genes,
+    g2m.features = g2m.genes,
+    set.ident = TRUE
+  )
+  
+  
+  unique(x = sapply(X = strsplit(x = colnames(
+    x = merged_data), split = '_'), FUN = '[', 1))
+  
+  print(table(merged_data$orig.ident))
+  
   return(merged_data)
   
 }
 
 
+qc_scatter <- function(object){
+  
+  plot1 <- Seurat::FeatureScatter(
+    object = object,
+    feature1 = "nCount_RNA",
+    feature2 = "percent.mt",
+    group.by = "group"
+  ) + theme(
+    legend.position = "bottom",
+    legend.title = element_blank()
+  )
+  
+  plot2 <- Seurat::FeatureScatter(
+    object = object,
+    feature1 = "nCount_RNA",
+    feature2 = "nFeature_RNA",
+    group.by = "group"
+  ) + theme(
+    legend.position = "bottom",
+    legend.title = element_blank()
+  )
+  
+  return(plot1 + plot2)
+  
+}
 
 
