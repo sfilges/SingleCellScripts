@@ -2,6 +2,8 @@
 
 Collection of scripts for processing and analysis of single cell RNA seq generated with 10x genomics systems or similar technologies.
 
+The scripts were developed using *Seurat v4*. Detailed methods and results can be found in the [Ranji et al., Journal of Translational Medicine (2024)](https://link.springer.com/article/10.1186/s12967-024-05211-w#Sec2). The scRNA-Seq data from the study (10x Genomics) is available from GEO under accession [GSE191132](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE191132).
+
 ## Overview
 
 The R folder contains the following scripts:
